@@ -89,8 +89,8 @@ class AuthApiCategory(context: Context) {
             is ApiResponse.Success -> {
                 val jsonResponse = JSONObject(response.data)
                 val status = jsonResponse.getString("status")
-                val authCookie = jsonResponse.optString("authenticationCookie", null.toString())
-                val reason = jsonResponse.optString("reason", null.toString())
+                val authCookie = jsonResponse.optString("authenticationCookie", null)
+                val reason = jsonResponse.optString("reason", null)
 
                 if ("success" == status && !authCookie.isNullOrEmpty()) {
                     apiManager.saveAuthCookie(authCookie)
@@ -149,6 +149,23 @@ class AuthApiCategory(context: Context) {
     }
 
     /**
+     * Logout the current user
+     *
+     * @return Boolean indicating if logout was successful
+     */
+    suspend fun logout(): Boolean {
+        val response = apiManager.delete("/auth", null)
+
+        return when (response) {
+            is ApiResponse.Success -> {
+                apiManager.clearAuthCookie()
+                true
+            }
+            else -> false
+        }
+    }
+
+    /**
      * Check if user is currently logged in
      *
      * @return true if logged in, false otherwise
@@ -159,9 +176,9 @@ class AuthApiCategory(context: Context) {
     }
 
     /**
-     * Logout the current user
+     * Logout locally without calling the API
      */
-    fun logout() {
+    fun localLogout() {
         apiManager.clearAuthCookie()
     }
 }

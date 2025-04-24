@@ -23,6 +23,9 @@ class ApiManager private constructor(context: Context) {
         private const val PREFS_NAME = "CatchNGoPrefs"
         private const val AUTH_COOKIE_KEY = "authCookie"
 
+        // Header name for the authentication token
+        private const val AUTH_HEADER = "X-Auth-Cookie"
+
         @Volatile
         private var instance: ApiManager? = null
 
@@ -60,7 +63,7 @@ class ApiManager private constructor(context: Context) {
     /**
      * Perform a GET request
      */
-    suspend fun get(endpoint: String, headers: Map<String, String>?): ApiResponse {
+    suspend fun get(endpoint: String, headers: Map<String, String>? = null): ApiResponse {
         return withContext(Dispatchers.IO) {
             executeRequest(endpoint, "GET", headers, null)
         }
@@ -69,9 +72,18 @@ class ApiManager private constructor(context: Context) {
     /**
      * Perform a POST request
      */
-    suspend fun post(endpoint: String, headers: Map<String, String>?, body: JSONObject?): ApiResponse {
+    suspend fun post(endpoint: String, headers: Map<String, String>? = null, body: JSONObject? = null): ApiResponse {
         return withContext(Dispatchers.IO) {
             executeRequest(endpoint, "POST", headers, body?.toString())
+        }
+    }
+
+    /**
+     * Perform a DELETE request
+     */
+    suspend fun delete(endpoint: String, headers: Map<String, String>? = null): ApiResponse {
+        return withContext(Dispatchers.IO) {
+            executeRequest(endpoint, "DELETE", headers, null)
         }
     }
 
@@ -89,10 +101,10 @@ class ApiManager private constructor(context: Context) {
             val connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = method
 
-            // Add auth cookie if available
+            // Set auth cookie in header if available
             val authCookie = getAuthCookie()
             if (!authCookie.isNullOrEmpty()) {
-                connection.setRequestProperty("Cookie", authCookie)
+                connection.setRequestProperty(AUTH_HEADER, authCookie)
             }
 
             // Add custom headers
@@ -114,6 +126,12 @@ class ApiManager private constructor(context: Context) {
 
             val responseCode = connection.responseCode
             val isSuccess = responseCode in 200..299
+
+            // Check for authentication cookie in response headers
+            val responseAuthCookie = connection.getHeaderField(AUTH_HEADER)
+            if (!responseAuthCookie.isNullOrEmpty()) {
+                saveAuthCookie(responseAuthCookie)
+            }
 
             val responseBody = if (isSuccess) {
                 readResponse(connection)

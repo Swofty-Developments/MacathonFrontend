@@ -21,4 +21,17 @@ sealed class ApiResponse {
         val message: String
             get() = exception.message ?: "Unknown error"
     }
+
+    /**
+     * Convert ApiResponse to a Result object for easier use with Kotlin's Result pattern
+     */
+    fun <T> toResult(transform: (String) -> T): Result<T> {
+        return when (this) {
+            is Success -> {
+                Result.success(transform(data))
+            }
+            is Error -> Result.failure(java.lang.Exception("HTTP Error: $code - $message"))
+            is Exception -> Result.failure(exception)
+        }
+    }
 }
