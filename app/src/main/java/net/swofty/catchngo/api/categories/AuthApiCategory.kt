@@ -1,184 +1,109 @@
 package net.swofty.catchngo.api.categories
 
 import android.content.Context
+import android.util.Log
 import net.swofty.catchngo.api.ApiManager
 import net.swofty.catchngo.api.ApiModels
 import net.swofty.catchngo.api.ApiResponse
 import org.json.JSONArray
 import org.json.JSONObject
+import okhttp3.MultipartBody
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 /**
- * Handles authentication-related API endpoints
- */
+ * Auth-related endpoints (/auth)
+**/
 class AuthApiCategory(context: Context) {
-    private val apiManager = ApiManager.getInstance(context)
 
-    /**
-     * Login with username and password
-     *
-     * @param username User's username
-     * @param password User's password
-     * @return LoginResponse with result
-     * @throws Exception if login fails
-     */
-    suspend fun login(username: String, password: String): ApiModels.LoginResponse {
-        val headers = mapOf(
-            "X-Auth-Username" to username,
-            "X-Auth-Password" to password
-        )
+    private val api = ApiManager.getInstance(context)
 
-        val response = apiManager.post("/auth/login", headers, null)
+    /* -------------------------------------------------------------------- */
+    /*  Login – returns OAuth2 bearer token                                 */
+    /* -------------------------------------------------------------------- */
 
-        return when (response) {
+    suspend fun login(username: String, password: String): ApiModels.TokenResponse {
+        return when (val res = api.postMultipart("/auth/login", mapOf(
+                "grant_type" to "password",
+                "username"   to username,
+                "password"   to password
+        ))) {
             is ApiResponse.Success -> {
-                val jsonResponse = JSONObject(response.data)
-                val status = jsonResponse.getString("status")
-                val authCookie = jsonResponse.optString("authenticationCookie", null.toString())
-
-                if ("success" == status && !authCookie.isNullOrEmpty()) {
-                    apiManager.saveAuthCookie(authCookie)
-                }
-
-                ApiModels.LoginResponse(status, authCookie)
+                val json  = JSONObject(res.data)
+                val token = json.getString("access_token")
+                val type  = json.getString("token_type")
+                api.saveAccessToken(token)
+                ApiModels.TokenResponse(token, type)
             }
-            is ApiResponse.Error -> {
-                throw Exception("HTTP Error: ${response.code} - ${response.message}")
-            }
-            is ApiResponse.Exception -> {
-                throw response.exception
-            }
+            is ApiResponse.Error     -> error("HTTP ${res.code}: ${res.message}")
+            is ApiResponse.Exception -> throw res.exception
         }
     }
 
-    /**
-     * Register a new user
-     *
-     * @param username New username
-     * @param password New password
-     * @param questions List of personality questions and answers
-     * @return RegisterResponse with result
-     * @throws Exception if registration fails
-     */
+    /* -------------------------------------------------------------------- */
+    /*  Register – creates user & (optionally) returns token                */
+    /* -------------------------------------------------------------------- */
+
     suspend fun register(
         username: String,
         password: String,
         questions: List<ApiModels.QuestionAnswer>
     ): ApiModels.RegisterResponse {
-        val headers = mutableMapOf(
-            "X-Auth-Username" to username,
-            "X-Auth-Password" to password
-        )
 
-        // Create questions JSON
-        val questionsJson = JSONObject()
-        val questionsArray = JSONArray()
-
-        for (question in questions) {
-            val questionJson = JSONObject()
-            questionJson.put("id", question.id)
-            questionJson.put("answer", question.answer)
-            questionsArray.put(questionJson)
+        /* Encode the questions list as a *bare JSON array*                 */
+        val questionsArray = JSONArray().apply {
+            questions.forEach { qa ->
+                put(JSONObject().put("id", qa.id).put("answer", qa.answer))
+            }
         }
 
-        questionsJson.put("questions", questionsArray)
-        headers["X-Auth-Questions"] = questionsJson.toString()
+        /* Request body is now JUST the array (not wrapped in an object)    */
+        val payload = questionsArray.toString()
 
-        val response = apiManager.post("/auth/register", headers, null)
+        /* Build URL with query parameters for username + password          */
+        val encodedUser = URLEncoder.encode(username, StandardCharsets.UTF_8)
+        val encodedPass = URLEncoder.encode(password, StandardCharsets.UTF_8)
+        val url         = "/auth/register?username=$encodedUser&password=$encodedPass"
 
-        return when (response) {
+        Log.i("AuthApi", "Register payload → $payload")
+
+        return when (val res = api.post(url, payload)) {
             is ApiResponse.Success -> {
-                val jsonResponse = JSONObject(response.data)
-                val status = jsonResponse.getString("status")
-                val authCookie = jsonResponse.optString("authenticationCookie", null)
-                val reason = jsonResponse.optString("reason", null)
-
-                if ("success" == status && !authCookie.isNullOrEmpty()) {
-                    apiManager.saveAuthCookie(authCookie)
-                }
-
-                ApiModels.RegisterResponse(status, authCookie, reason)
+                val json  = JSONObject(res.data.ifBlank { "{}" })
+                val token = json.optString("access_token", null)
+                val type  = json.optString("token_type",  null)
+                token?.let { api.saveAccessToken(it) }
+                ApiModels.RegisterResponse(ok = true, accessToken = token, tokenType = type)
             }
-            is ApiResponse.Error -> {
-                throw Exception("HTTP Error: ${response.code} - ${response.message}")
-            }
-            is ApiResponse.Exception -> {
-                throw response.exception
-            }
+            is ApiResponse.Error     -> ApiModels.RegisterResponse(false, reason = res.message)
+            is ApiResponse.Exception -> throw res.exception
         }
     }
 
-    /**
-     * Fetch personality questions for registration
-     *
-     * @return List of questions
-     * @throws Exception if fetching questions fails
-     */
-    suspend fun fetchQuestions(): List<ApiModels.Question> {
-        val response = apiManager.get("/questions/fetch", null)
+    /* -------------------------------------------------------------------- */
+    /*  /auth/me – get profile                                              */
+    /* -------------------------------------------------------------------- */
 
-        return when (response) {
-            is ApiResponse.Success -> {
-                val jsonResponse = JSONObject(response.data)
-
-                if ("success" == jsonResponse.getString("status")) {
-                    val questionsArray = jsonResponse.getJSONArray("questions")
-                    val questions = mutableListOf<ApiModels.Question>()
-
-                    for (i in 0 until questionsArray.length()) {
-                        val questionObj = questionsArray.getJSONObject(i)
-                        questions.add(
-                            ApiModels.Question(
-                                id = questionObj.getInt("id"),
-                                questionText = questionObj.getString("questionText")
-                            )
-                        )
-                    }
-
-                    questions
-                } else {
-                    throw Exception("Failed to fetch questions")
-                }
-            }
-            is ApiResponse.Error -> {
-                throw Exception("HTTP Error: ${response.code} - ${response.message}")
-            }
-            is ApiResponse.Exception -> {
-                throw response.exception
-            }
+    suspend fun me(): JSONObject {
+        return when (val res = api.post("/auth/me")) {
+            is ApiResponse.Success -> JSONObject(res.data)
+            is ApiResponse.Error     -> error("HTTP ${res.code}: ${res.message}")
+            is ApiResponse.Exception -> throw res.exception
         }
     }
 
-    /**
-     * Logout the current user
-     *
-     * @return Boolean indicating if logout was successful
-     */
+    /* -------------------------------------------------------------------- */
+    /*  Logout (server + local)                                             */
+    /* -------------------------------------------------------------------- */
+
     suspend fun logout(): Boolean {
-        val response = apiManager.delete("/auth", null)
-
-        return when (response) {
-            is ApiResponse.Success -> {
-                apiManager.clearAuthCookie()
-                true
-            }
-            else -> false
+        val ok = when (api.delete("/auth/")) {
+            is ApiResponse.Success -> true
+            else                   -> false
         }
+        api.clearAccessToken()
+        return ok
     }
 
-    /**
-     * Check if user is currently logged in
-     *
-     * @return true if logged in, false otherwise
-     */
-    fun isLoggedIn(): Boolean {
-        val authCookie = apiManager.getAuthCookie()
-        return !authCookie.isNullOrEmpty()
-    }
-
-    /**
-     * Logout locally without calling the API
-     */
-    fun localLogout() {
-        apiManager.clearAuthCookie()
-    }
+    fun isLoggedIn(): Boolean = api.getAccessToken()?.isNotEmpty() == true
 }

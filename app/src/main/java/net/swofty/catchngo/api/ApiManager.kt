@@ -4,163 +4,158 @@ import android.content.Context
 import android.content.SharedPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.io.OutputStream
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
+import java.nio.charset.StandardCharsets
 
 /**
- * Base API manager that handles making HTTP requests to the backend
+ * Centralised HTTP helper used by all API categories.
+ * – Sends JSON bodies.
+ * – Automatically adds an Authorization: Bearer <token> header if one is saved.
  */
 class ApiManager private constructor(context: Context) {
+
     private val appContext = context.applicationContext
-    private val prefs: SharedPreferences = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences =
+        appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     companion object {
-        private const val BASE_URL = "http://localhost:8000"
+        private const val BASE_URL = "http://10.0.2.2:8000"
         private const val PREFS_NAME = "CatchNGoPrefs"
-        private const val AUTH_COOKIE_KEY = "authCookie"
-
-        // Header name for the authentication token
-        private const val AUTH_HEADER = "X-Auth-Cookie"
+        private const val TOKEN_KEY = "accessToken"
+        private const val AUTH_HDR   = "Authorization"
 
         @Volatile
         private var instance: ApiManager? = null
 
-        /**
-         * Get singleton instance of ApiManager
-         */
-        fun getInstance(context: Context): ApiManager {
-            return instance ?: synchronized(this) {
+        fun getInstance(context: Context): ApiManager =
+            instance ?: synchronized(this) {
                 instance ?: ApiManager(context).also { instance = it }
             }
+    }
+
+    /* -------------------------------------------------------------------- */
+    /*  Access-token helpers                                                */
+    /* -------------------------------------------------------------------- */
+
+    fun getAccessToken(): String? = prefs.getString(TOKEN_KEY, null)
+
+    fun saveAccessToken(token: String) {
+        prefs.edit().putString(TOKEN_KEY, token).apply()
+    }
+
+    fun clearAccessToken() {
+        prefs.edit().remove(TOKEN_KEY).apply()
+    }
+
+    /* -------------------------------------------------------------------- */
+    /*  Public request helpers                                              */
+    /* -------------------------------------------------------------------- */
+
+    suspend fun get(endpoint: String): ApiResponse =
+        withContext(Dispatchers.IO) { executeRequest(endpoint, "GET", null) }
+
+    suspend fun post(endpoint: String, bodyJson: String? = null): ApiResponse =
+        withContext(Dispatchers.IO) {
+            val bytes = bodyJson?.toByteArray(StandardCharsets.UTF_8)
+            executeRequest(
+                endpoint,
+                "POST",
+                bodyBytes   = bytes,
+                contentType = "application/json"
+            )
         }
+
+    suspend fun postMultipart(
+        endpoint: String,
+        fields: Map<String, String>
+    ): ApiResponse = withContext(Dispatchers.IO) {
+        val boundary   = "----CatchNGo${System.currentTimeMillis()}"
+        val bodyBytes  = buildMultipartBody(fields, boundary)
+        val typeHeader = "multipart/form-data; boundary=$boundary"
+        executeRequest(
+            endpoint,
+            "POST",
+            bodyBytes   = bodyBytes,
+            contentType = typeHeader
+        )
     }
 
-    /**
-     * Get stored authentication cookie
-     */
-    fun getAuthCookie(): String? {
-        return prefs.getString(AUTH_COOKIE_KEY, null)
-    }
+    suspend fun delete(endpoint: String): ApiResponse =
+        withContext(Dispatchers.IO) { executeRequest(endpoint, "DELETE", null) }
 
-    /**
-     * Save authentication cookie
-     */
-    fun saveAuthCookie(cookie: String) {
-        prefs.edit().putString(AUTH_COOKIE_KEY, cookie).apply()
-    }
+    /* -------------------------------------------------------------------- */
+    /*  Core implementation                                                 */
+    /* -------------------------------------------------------------------- */
 
-    /**
-     * Clear authentication cookie (logout)
-     */
-    fun clearAuthCookie() {
-        prefs.edit().remove(AUTH_COOKIE_KEY).apply()
-    }
-
-    /**
-     * Perform a GET request
-     */
-    suspend fun get(endpoint: String, headers: Map<String, String>? = null): ApiResponse {
-        return withContext(Dispatchers.IO) {
-            executeRequest(endpoint, "GET", headers, null)
-        }
-    }
-
-    /**
-     * Perform a POST request
-     */
-    suspend fun post(endpoint: String, headers: Map<String, String>? = null, body: JSONObject? = null): ApiResponse {
-        return withContext(Dispatchers.IO) {
-            executeRequest(endpoint, "POST", headers, body?.toString())
-        }
-    }
-
-    /**
-     * Perform a DELETE request
-     */
-    suspend fun delete(endpoint: String, headers: Map<String, String>? = null): ApiResponse {
-        return withContext(Dispatchers.IO) {
-            executeRequest(endpoint, "DELETE", headers, null)
-        }
-    }
-
-    /**
-     * Execute HTTP request
-     */
     private fun executeRequest(
         endpoint: String,
         method: String,
-        headers: Map<String, String>?,
-        body: String?
+        bodyBytes: ByteArray? = null,
+        contentType: String?  = null
     ): ApiResponse {
-        try {
-            val url = URL(BASE_URL + endpoint)
+        return try {
+            val url        = URL(BASE_URL + endpoint)
             val connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = method
-
-            // Set auth cookie in header if available
-            val authCookie = getAuthCookie()
-            if (!authCookie.isNullOrEmpty()) {
-                connection.setRequestProperty(AUTH_HEADER, authCookie)
-            }
-
-            // Add custom headers
-            headers?.forEach { (key, value) ->
-                connection.setRequestProperty(key, value)
-            }
-
-            connection.setRequestProperty("Content-Type", "application/json")
             connection.doInput = true
 
-            // Add body if provided
-            if (body != null) {
+            // choose content type
+            val type = contentType ?: "application/json"
+            connection.setRequestProperty("Content-Type", type)
+
+            // auth header if token present
+            getAccessToken()?.let { token ->
+                connection.setRequestProperty(AUTH_HDR, "Bearer $token")
+            }
+
+            // write body if supplied
+            if (bodyBytes != null) {
                 connection.doOutput = true
-                OutputStreamWriter(connection.outputStream).use { writer ->
-                    writer.write(body)
-                    writer.flush()
+                connection.setRequestProperty("Content-Length", bodyBytes.size.toString())
+                connection.outputStream.use { os: OutputStream ->
+                    os.write(bodyBytes)
+                    os.flush()
                 }
             }
 
-            val responseCode = connection.responseCode
-            val isSuccess = responseCode in 200..299
-
-            // Check for authentication cookie in response headers
-            val responseAuthCookie = connection.getHeaderField(AUTH_HEADER)
-            if (!responseAuthCookie.isNullOrEmpty()) {
-                saveAuthCookie(responseAuthCookie)
-            }
-
-            val responseBody = if (isSuccess) {
-                readResponse(connection)
+            val code = connection.responseCode
+            val body = if (code in 200..299) {
+                BufferedReader(InputStreamReader(connection.inputStream)).use { it.readText() }
             } else {
-                try {
-                    readErrorResponse(connection)
-                } catch (e: Exception) {
-                    "Error: $responseCode"
-                }
+                connection.errorStream?.let {
+                    BufferedReader(InputStreamReader(it)).use { reader -> reader.readText() }
+                } ?: "HTTP $code"
             }
 
-            return if (isSuccess) {
-                ApiResponse.Success(responseBody)
-            } else {
-                ApiResponse.Error(responseCode, responseBody)
-            }
+            if (code in 200..299) ApiResponse.Success(body)
+            else                   ApiResponse.Error(code, body)
         } catch (e: Exception) {
-            return ApiResponse.Exception(e)
+            ApiResponse.Exception(e)
         }
     }
 
-    private fun readResponse(connection: HttpURLConnection): String {
-        val reader = BufferedReader(InputStreamReader(connection.inputStream))
-        return reader.use { it.readText() }
-    }
 
-    private fun readErrorResponse(connection: HttpURLConnection): String {
-        connection.errorStream ?: return "Unknown error"
-        val reader = BufferedReader(InputStreamReader(connection.errorStream))
-        return reader.use { it.readText() }
+    /* -------------------------------------------------------------------- */
+    /*  Helper: build multipart bytes                                       */
+    /* -------------------------------------------------------------------- */
+
+    private fun buildMultipartBody(fields: Map<String, String>, boundary: String): ByteArray {
+        val lb = "\r\n"
+        val sb = StringBuilder()
+
+        fields.forEach { (name, value) ->
+            sb.append("--").append(boundary).append(lb)
+            sb.append("Content-Disposition: form-data; name=\"").append(name).append("\"").append(lb)
+            sb.append(lb)
+            sb.append(value).append(lb)
+        }
+
+        sb.append("--").append(boundary).append("--").append(lb)
+        return sb.toString().toByteArray(StandardCharsets.UTF_8)
     }
 }
