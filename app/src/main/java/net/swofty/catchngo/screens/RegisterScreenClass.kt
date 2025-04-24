@@ -339,7 +339,6 @@ class RegisterScreenClass {
                     unfocusedIndicatorColor= Color.Transparent
                 ),
                 modifier = Modifier.fillMaxWidth()
-                // isError removed → background stays darkSurface
             )
         }
     }
@@ -471,9 +470,6 @@ class RegisterScreenClass {
         )
     }
 
-    /* =========================================================
-       Extension for border logic
-       ========================================================= */
     private fun Modifier.borderForField(isFocused: Boolean, hasError: Boolean): Modifier {
         return when {
             hasError -> this.border(

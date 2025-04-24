@@ -2,6 +2,7 @@ package net.swofty.catchngo.api
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
@@ -44,9 +45,13 @@ class ApiManager private constructor(context: Context) {
 
     fun getAccessToken(): String? = prefs.getString(TOKEN_KEY, null)
 
-    fun saveAccessToken(token: String) {
-        prefs.edit().putString(TOKEN_KEY, token).apply()
-    }
+    suspend fun saveAccessToken(token: String): Boolean =
+        withContext(Dispatchers.IO) {          // keep this off the main thread
+            Log.i("pog", "Saving access token $token")
+            prefs.edit()
+                .putString(TOKEN_KEY, token)
+                .commit()                      // synchronous; Boolean result
+        }
 
     fun clearAccessToken() {
         prefs.edit().remove(TOKEN_KEY).apply()
@@ -111,7 +116,9 @@ class ApiManager private constructor(context: Context) {
             // auth header if token present
             getAccessToken()?.let { token ->
                 connection.setRequestProperty(AUTH_HDR, "Bearer $token")
+                Log.i("pog", "WE ARE PASSING THROUGH $token")
             }
+            Log.i("pog", "WE HAVE MADE A REQUETS BLAH BLAH")
 
             // write body if supplied
             if (bodyBytes != null) {

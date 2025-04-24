@@ -34,6 +34,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <meta-data
+            android:name="com.mapbox.token"
+            android:value="pk.eyJ1Ijoic3dvZnR5IiwiYSI6ImNtOXZtanVnaDBsdnAycnB2N3NrYmJmdXMifQ.ICveA0UdI_uFxo_x8b6bWw"/>
 
 
         <!-- Add Location Service -->

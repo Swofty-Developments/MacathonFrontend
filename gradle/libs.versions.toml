@@ -14,8 +14,12 @@ runtimeLivedata = "1.8.0"
 playServicesLocation = "21.3.0"
 okhttp = "5.0.0-alpha.14"
 
+compose = "11.11.0"
+playServicesGames = "23.2.0"
+
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+compose = { module = "com.mapbox.maps:compose", version.ref = "compose" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
@@ -34,6 +38,7 @@ androidx-lifecycle-livedata-core-ktx = { group = "androidx.lifecycle", name = "l
 androidx-runtime-livedata = { group = "androidx.compose.runtime", name = "runtime-livedata", version.ref = "runtimeLivedata" }
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+play-services-games = { group = "com.google.android.gms", name = "play-services-games", version.ref = "playServicesGames" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

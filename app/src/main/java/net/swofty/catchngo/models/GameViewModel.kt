@@ -1,90 +1,47 @@
+// ────────────────────────────────────────────────────────────────────────────────
+// GameViewModel.kt   –  observes LocationStore.latest
+// ────────────────────────────────────────────────────────────────────────────────
 package net.swofty.catchngo.models
 
-import androidx.compose.runtime.mutableStateOf
-import androidx.lifecycle.ViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import net.swofty.catchngo.api.categories.AuthApiCategory
+import net.swofty.catchngo.services.LocationStore
+import org.json.JSONObject
 
 /**
- * ViewModel for game functionality after login
+ * Fetches user profile (/auth/me) and exposes live GPS fixes via LocationStore.
  */
-class GameViewModel : ViewModel() {
+class GameViewModel(application: Application) : AndroidViewModel(application) {
 
-    // User score
-    private val _score = MutableStateFlow(0)
-    val score: StateFlow<Int> = _score
+    private val authApi = AuthApiCategory(application.applicationContext)
 
-    // Nearby players
-    private val _nearbyPlayers = MutableStateFlow<List<NearbyPlayer>>(emptyList())
-    val nearbyPlayers: StateFlow<List<NearbyPlayer>> = _nearbyPlayers
+    private val _profile = kotlinx.coroutines.flow.MutableStateFlow<JSONObject?>(null)
+    val profile: kotlinx.coroutines.flow.StateFlow<JSONObject?> = _profile
 
-    // Location tracking toggle
-    val locationTrackingEnabled = mutableStateOf(true)
-
-    // Demo data - in a real app this would come from a location-based service
-    private val samplePlayers = listOf(
-        NearbyPlayer(
-            id = "user1",
-            username = "CoolRunner99",
-            distanceMeters = 45
-        ),
-        NearbyPlayer(
-            id = "user2",
-            username = "Explorer42",
-            distanceMeters = 120
-        ),
-        NearbyPlayer(
-            id = "user3",
-            username = "MapMaster",
-            distanceMeters = 85
-        )
-    )
+    /** Live location supplied by LocationTrackingService */
+    val location: StateFlow<android.location.Location?> = LocationStore.latest
 
     init {
-        // Initialize with a sample score
-        _score.value = 350
+        refreshProfile()
     }
 
-    /**
-     * Toggle location tracking on/off
-     */
-    fun toggleLocationTracking() {
-        locationTrackingEnabled.value = !locationTrackingEnabled.value
-
-        // If tracking is turned off, clear nearby players
-        if (!locationTrackingEnabled.value) {
-            _nearbyPlayers.value = emptyList()
+    /** Re-query /auth/me */
+    fun refreshProfile() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                _profile.value = authApi.me()
+            } catch (e: Exception) {
+                _profile.value = JSONObject().put("error", e.message ?: "Unknown error")
+            }
         }
     }
 
-    /**
-     * Scan for nearby players
-     */
-    fun scanForPlayers() {
-        if (locationTrackingEnabled.value) {
-            // Simulate finding nearby players - in a real app this would use location services
-            _nearbyPlayers.value = samplePlayers.shuffled().take((1..3).random())
-        }
-    }
-
-    /**
-     * Catch a player
-     */
-    fun catchPlayer(playerId: String) {
-        // Find the player
-        val player = _nearbyPlayers.value.find { it.id == playerId } ?: return
-
-        // Award points based on distance (closer = more points)
-        val pointsAwarded = when {
-            player.distanceMeters < 50 -> 50
-            player.distanceMeters < 100 -> 30
-            else -> 20
-        }
-
-        // Update score
-        _score.value += pointsAwarded
-
-        // Remove caught player from nearby list
-        _nearbyPlayers.value = _nearbyPlayers.value.filter { it.id != playerId }
-    }
+    /* Handy getters --------------------------------------------------------- */
+    fun getUsername(): String = _profile.value?.optString("name") ?: ""
+    fun getPoints()  : Int    = _profile.value?.optInt("points") ?: 0
 }

@@ -22,6 +22,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.mapbox.common.MapboxOptions
 import net.swofty.catchngo.models.*
 import net.swofty.catchngo.screens.*
 import net.swofty.catchngo.services.LocationTrackingService
@@ -35,6 +36,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        MapboxOptions.accessToken = "pk.eyJ1Ijoic3dvZnR5IiwiYSI6ImNtOXZtanVnaDBsdnAycnB2N3NrYmJmdXMifQ.ICveA0UdI_uFxo_x8b6bWw"
 
         setContent {
             CatchNGoTheme {

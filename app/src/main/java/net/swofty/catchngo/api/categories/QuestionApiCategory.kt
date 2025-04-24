@@ -25,7 +25,7 @@ class QuestionApiCategory(context: Context) {
      * @return list of Question objects (throws on error)
      */
     suspend fun fetchQuestions(): List<ApiModels.Question> {
-        return when (val res = api.get("/questions")) {
+        return when (val res = api.get("/questions/")) {
             is ApiResponse.Success -> parseQuestionsJson(res.data)
             is ApiResponse.Error   -> error("HTTP ${res.code}: ${res.message}")
             is ApiResponse.Exception -> throw res.exception

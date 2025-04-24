@@ -1,3 +1,6 @@
+// ────────────────────────────────────────────────────────────────────────────────
+// AuthApiCategory.kt
+// ────────────────────────────────────────────────────────────────────────────────
 package net.swofty.catchngo.api.categories
 
 import android.content.Context
@@ -7,31 +10,50 @@ import net.swofty.catchngo.api.ApiModels
 import net.swofty.catchngo.api.ApiResponse
 import org.json.JSONArray
 import org.json.JSONObject
-import okhttp3.MultipartBody
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
 /**
- * Auth-related endpoints (/auth)
-**/
+ * Handles all /auth-related endpoints.
+ */
 class AuthApiCategory(context: Context) {
 
     private val api = ApiManager.getInstance(context)
 
     /* -------------------------------------------------------------------- */
-    /*  Login – returns OAuth2 bearer token                                 */
+    /*  Helpers: safely unwrap “status / data” or fall back to flat JSON    */
+    /* -------------------------------------------------------------------- */
+
+    /** Returns the *payload* object, after verifying `status == success`. */
+    private fun unwrap(json: JSONObject): JSONObject {
+        val status = json.optString("status", "success")
+        if (status != "success") error("Server responded with status=$status")
+
+        // If there’s a {data:{…}} block, use it; otherwise keep the root
+        return json.optJSONObject("data") ?: json
+    }
+
+    /* -------------------------------------------------------------------- */
+    /*  POST /auth/login  → bearer token                                    */
     /* -------------------------------------------------------------------- */
 
     suspend fun login(username: String, password: String): ApiModels.TokenResponse {
-        return when (val res = api.postMultipart("/auth/login", mapOf(
+        val res = api.postMultipart(
+            "/auth/login",
+            mapOf(
                 "grant_type" to "password",
                 "username"   to username,
                 "password"   to password
-        ))) {
+            )
+        )
+
+        Log.i("Test", res.toString())
+
+        return when (res) {
             is ApiResponse.Success -> {
-                val json  = JSONObject(res.data)
-                val token = json.getString("access_token")
-                val type  = json.getString("token_type")
+                val data   = unwrap(JSONObject(res.data))
+                val token  = data.getString("access_token")
+                val type   = data.optString("token_type", "bearer")
                 api.saveAccessToken(token)
                 ApiModels.TokenResponse(token, type)
             }
@@ -41,7 +63,7 @@ class AuthApiCategory(context: Context) {
     }
 
     /* -------------------------------------------------------------------- */
-    /*  Register – creates user & (optionally) returns token                */
+    /*  POST /auth/register  → (optional) bearer token                      */
     /* -------------------------------------------------------------------- */
 
     suspend fun register(
@@ -50,28 +72,27 @@ class AuthApiCategory(context: Context) {
         questions: List<ApiModels.QuestionAnswer>
     ): ApiModels.RegisterResponse {
 
-        /* Encode the questions list as a *bare JSON array*                 */
+        // Build bare-array JSON for the question answers
         val questionsArray = JSONArray().apply {
             questions.forEach { qa ->
                 put(JSONObject().put("id", qa.id).put("answer", qa.answer))
             }
         }
-
-        /* Request body is now JUST the array (not wrapped in an object)    */
         val payload = questionsArray.toString()
 
-        /* Build URL with query parameters for username + password          */
+        // Encode username & password as query params
         val encodedUser = URLEncoder.encode(username, StandardCharsets.UTF_8)
         val encodedPass = URLEncoder.encode(password, StandardCharsets.UTF_8)
         val url         = "/auth/register?username=$encodedUser&password=$encodedPass"
 
         Log.i("AuthApi", "Register payload → $payload")
 
-        return when (val res = api.post(url, payload)) {
+        val res = api.post(url, payload)
+        return when (res) {
             is ApiResponse.Success -> {
-                val json  = JSONObject(res.data.ifBlank { "{}" })
-                val token = json.optString("access_token", null)
-                val type  = json.optString("token_type",  null)
+                val data  = unwrap(JSONObject(res.data.ifBlank { "{}" }))
+                val token = data.optString("access_token", null)
+                val type  = data.optString("token_type",  null)
                 token?.let { api.saveAccessToken(it) }
                 ApiModels.RegisterResponse(ok = true, accessToken = token, tokenType = type)
             }
@@ -81,19 +102,20 @@ class AuthApiCategory(context: Context) {
     }
 
     /* -------------------------------------------------------------------- */
-    /*  /auth/me – get profile                                              */
+    /*  POST /auth/me  → profile JSON                                       */
     /* -------------------------------------------------------------------- */
 
     suspend fun me(): JSONObject {
-        return when (val res = api.post("/auth/me")) {
-            is ApiResponse.Success -> JSONObject(res.data)
+        val res = api.post("/auth/me")
+        return when (res) {
+            is ApiResponse.Success   -> unwrap(JSONObject(res.data))
             is ApiResponse.Error     -> error("HTTP ${res.code}: ${res.message}")
             is ApiResponse.Exception -> throw res.exception
         }
     }
 
     /* -------------------------------------------------------------------- */
-    /*  Logout (server + local)                                             */
+    /*  DELETE /auth/  → logout                                             */
     /* -------------------------------------------------------------------- */
 
     suspend fun logout(): Boolean {

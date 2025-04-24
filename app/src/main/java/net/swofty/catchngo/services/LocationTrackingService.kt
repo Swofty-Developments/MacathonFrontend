@@ -1,3 +1,6 @@
+// ────────────────────────────────────────────────────────────────────────────────
+// LocationTrackingService.kt
+// ────────────────────────────────────────────────────────────────────────────────
 package net.swofty.catchngo.services
 
 import android.app.*
@@ -15,93 +18,101 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import net.swofty.catchngo.MainActivity
 import net.swofty.catchngo.R
+import kotlin.system.measureTimeMillis
 
 class LocationTrackingService : Service() {
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private lateinit var fusedLocationClient: FusedLocationProviderClient
-    private lateinit var locationCallback: LocationCallback
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private lateinit var fused: FusedLocationProviderClient
+    private lateinit var callback: LocationCallback
 
-    // 10 s desired interval, 5 s fastest, 15 s max defer
-    private val locationRequest = LocationRequest.Builder(
-        Priority.PRIORITY_HIGH_ACCURACY, 10_000
+    // 1-second min interval, desired 2 s, deferrable 10 s for batching
+    private val request = LocationRequest.Builder(
+        Priority.PRIORITY_HIGH_ACCURACY, 2_00
     )
-        .setMinUpdateIntervalMillis(5_000)
-        .setMaxUpdateDelayMillis(15_000)
+        .setMinUpdateIntervalMillis(0)                 // deliver as fast as possible
+        .setMaxUpdateDelayMillis(0)                    // **no batching**
+        .setGranularity(Granularity.GRANULARITY_FINE)
         .setWaitForAccurateLocation(false)
         .build()
 
+    /* keep track of last backend POST time (ms) */
+    private var lastUpload = 0L
+
     override fun onCreate() {
         super.onCreate()
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        fused = LocationServices.getFusedLocationProviderClient(this)
 
-        locationCallback = object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) {
-                result.lastLocation?.let(::handleLocationUpdate)
+        callback = object : LocationCallback() {
+            override fun onLocationResult(res: LocationResult) {
+                res.lastLocation?.let(::handleLocation)
             }
         }
-        createNotificationChannel()
+        createChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION_ID, createNotification())
-        startLocationUpdates()
+        startForeground(ID, foregroundNotification())
+        startUpdates()
         return START_STICKY
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    override fun onBind(i: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        stopLocationUpdates()
+        fused.removeLocationUpdates(callback)
         super.onDestroy()
     }
 
-    private fun startLocationUpdates() = try {
-        fusedLocationClient.requestLocationUpdates(
-            locationRequest, locationCallback, Looper.getMainLooper()
-        )
-    } catch (_: SecurityException) { /* permission denied; ignore */ }
+    private fun startUpdates() = try {
+        fused.requestLocationUpdates(request, callback, Looper.getMainLooper())
+    } catch (_: SecurityException) { /* missing permission */ }
 
-    private fun stopLocationUpdates() =
-        fusedLocationClient.removeLocationUpdates(locationCallback)
+    /* ---------------------------------------------------------------------- */
+    /*  Handle each GPS fix                                                   */
+    /* ---------------------------------------------------------------------- */
+    private fun handleLocation(loc: Location) = scope.launch {
+        // 1. push to in-app store immediately
+        LocationStore.update(loc)
 
-    private fun handleLocationUpdate(location: Location) = serviceScope.launch {
-        // TODO: Send to backend via ApiManager when ready
-        android.util.Log.d(
-            "LocationTrackingService",
-            "Location: ${location.latitude}, ${location.longitude}"
-        )
+        // 2. throttle backend upload to once every 10 s
+        val now = System.currentTimeMillis()
+        if (now - lastUpload >= 10_000) {
+            lastUpload = now
+            // TODO: ApiManager.uploadLocation(loc)  ← your real call
+            android.util.Log.d("LocationService", "Uploaded ${loc.latitude},${loc.longitude}")
+        }
     }
 
-    private fun createNotification(): Notification {
-        val pendingIntent = PendingIntent.getActivity(
+    /* ---------------------------------------------------------------------- */
+    /*  Notification helpers                                                  */
+    /* ---------------------------------------------------------------------- */
+    private fun foregroundNotification(): Notification {
+        val pi = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Catch N Go")
-            .setContentText("Tracking location to award points")
+        return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentIntent(pendingIntent)
+            .setContentTitle("Catch N Go")
+            .setContentText("Tracking location…")
+            .setContentIntent(pi)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
     }
 
-    private fun createNotificationChannel() {
+    private fun createChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID, "Location Tracking", NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Used for tracking location in background"
-                setShowBadge(false)
-            }
+            val ch = NotificationChannel(
+                CHANNEL, "Location tracking", NotificationManager.IMPORTANCE_LOW
+            ).apply { setShowBadge(false) }
             (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
-                .createNotificationChannel(channel)
+                .createNotificationChannel(ch)
         }
     }
 
     companion object {
-        private const val NOTIFICATION_ID = 12345
-        private const val CHANNEL_ID = "location_channel"
+        private const val ID = 12345
+        private const val CHANNEL = "location_channel"
     }
 }
