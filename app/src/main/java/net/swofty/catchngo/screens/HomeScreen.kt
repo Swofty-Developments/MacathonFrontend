@@ -257,7 +257,7 @@ class HomeScreen {
                     color = accentBlue,
                     shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
                 )
-                .background(darkSurface)
+                .background(Color.White)
                 .padding(16.dp)
         ) {
             Column(
@@ -288,7 +288,7 @@ class HomeScreen {
                 // Tracking status
                 Text(
                     text = "Tracking: Nobody :(",
-                    color = textWhite,
+                    color = Color.Black,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.fillMaxWidth(),

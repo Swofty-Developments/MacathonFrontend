@@ -18,6 +18,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import net.swofty.catchngo.MainActivity
 import net.swofty.catchngo.R
+import net.swofty.catchngo.api.ApiManager
+import net.swofty.catchngo.api.categories.LocationApiCategory
 import kotlin.system.measureTimeMillis
 
 class LocationTrackingService : Service() {
@@ -79,7 +81,21 @@ class LocationTrackingService : Service() {
         val now = System.currentTimeMillis()
         if (now - lastUpload >= 10_000) {
             lastUpload = now
-            // TODO: ApiManager.uploadLocation(loc)  ← your real call
+
+            try {
+                // Upload location to the server
+                val locationApi = LocationApiCategory(applicationContext)
+                val success = locationApi.uploadLocation(loc)
+
+                if (success) {
+                    android.util.Log.d("LocationService", "Successfully uploaded location: ${loc.latitude},${loc.longitude}")
+                } else {
+                    android.util.Log.w("LocationService", "Failed to upload location: ${loc.latitude},${loc.longitude}")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("LocationService", "Error uploading location", e)
+            }
+
             android.util.Log.d("LocationService", "Uploaded ${loc.latitude},${loc.longitude}")
         }
     }
