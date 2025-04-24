@@ -98,8 +98,10 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
      * Logout the current user
      */
     fun logout() {
-        authApi.logout()
-        _loginState.value = LoginState.Initial
+        viewModelScope.launch(Dispatchers.IO) {
+            authApi.logout()
+            _loginState.postValue(LoginState.Initial)
+        }
     }
 
     /**

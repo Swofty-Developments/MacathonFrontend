@@ -114,7 +114,7 @@ class AuthApiCategory(context: Context) {
      * @throws Exception if fetching questions fails
      */
     suspend fun fetchQuestions(): List<ApiModels.Question> {
-        val response = apiManager.get("/auth/fetchQuestions", null)
+        val response = apiManager.get("/questions/fetch", null)
 
         return when (response) {
             is ApiResponse.Success -> {
