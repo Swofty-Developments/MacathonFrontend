@@ -86,4 +86,19 @@ object ApiModels {
         val disabled:  Boolean,
         val questions: List<QuestionAnswer>
     )
+
+    /* Add this to the ApiModels.kt file in the "Friendex models" section */
+
+    /**
+     * Status of currently selected user for tracking.
+     * Returned by GET /friendex/select/check
+     */
+    data class SelectionStatus(
+        val selectedFriend: String?,        // ID of the selected friend, null if none
+        val isInitiator: Boolean,           // Whether this user initiated the tracking
+        val timeRemaining: Double,          // Time remaining in seconds
+        val elapsedTime: Double,            // Elapsed time in seconds
+        val questionsReady: Boolean,        // Whether questions are ready (for quiz feature)
+        val pointsAccumulated: Int          // Points accumulated so far in this tracking session
+    )
 }

@@ -152,6 +152,50 @@ class FriendexApiCategory(context: Context) {
     }
 
     /**
+     * GET /friendex/select/check
+     * Check currently selected user and tracking status
+     *
+     * @return Selection status or null if request failed
+     */
+    suspend fun checkSelection(): ApiModels.SelectionStatus? = withContext(Dispatchers.IO) {
+        val response = api.get("/friendex/select/check")
+
+        return@withContext when (response) {
+            is ApiResponse.Success -> {
+                try {
+                    val jsonObject = JSONObject(response.data)
+                    val data = unwrap(jsonObject)
+
+                    ApiModels.SelectionStatus(
+                        selectedFriend = data.optString("selectedFriend", null),
+                        isInitiator = data.optBoolean("isInitiator", false),
+                        timeRemaining = data.optDouble("timeRemaining", 0.0),
+                        elapsedTime = data.optDouble("elapsedTime", 0.0),
+                        questionsReady = data.optBoolean("questionsReady", false),
+                        pointsAccumulated = data.optInt("pointsAccumulated", 0)
+                    )
+                } catch (e: Exception) {
+                    Log.e("FriendexApi", "Failed to parse selection status", e)
+                    null
+                }
+            }
+            else -> null
+        }
+    }
+
+    /**
+     * POST /friendex/deselect
+     * Deselect the currently selected user.
+     *
+     * @return True if deselection was successful
+     */
+    suspend fun deselectUser(): Boolean = withContext(Dispatchers.IO) {
+        val response = api.post("/friendex/deselect")
+
+        return@withContext response is ApiResponse.Success
+    }
+
+    /**
      * POST /friendex/addfriend
      * Add a user as a friend.
      *
