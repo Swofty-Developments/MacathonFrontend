@@ -160,10 +160,12 @@ class HomeScreen {
 
         /* ── Start selection status polling when tracking someone ────────── */
         LaunchedEffect(Unit) {
-            locationViewModel.startNearbyUsersWatch()
-            gameViewModel.refreshProfile()
             friendexViewModel.checkSelectionStatus()
             friendexViewModel.startSelectionStatusPolling()
+        }
+
+        LaunchedEffect(Unit) {
+            locationViewModel.startNearbyUsersWatch()
         }
 
         /* ── hook LocationViewModel once we know our ID ─────────────────── */

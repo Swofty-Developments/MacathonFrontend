@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
@@ -149,6 +150,11 @@ fun AppNavHost(
         }
 
         composable("home") {
+            // Ensure critical services are running whenever Home screen is shown
+            LaunchedEffect (Unit) {
+                gameViewModel.refreshProfile()
+            }
+
             HomeScreen().HomeContent(
                 onLogout      = {
                     authViewModel.logout()
