@@ -1,6 +1,16 @@
+// ────────────────────────────────────────────────────────────────────────────────
+// RegisterScreenClass.kt          ⟨FULL FILE – paste as-is⟩
+// ────────────────────────────────────────────────────────────────────────────────
 package net.swofty.catchngo.screens
 
-import androidx.compose.animation.core.rememberInfiniteTransition
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
+import android.net.Uri
+import android.os.Build
+import android.util.Base64
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -20,74 +30,137 @@ import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import net.swofty.catchngo.R
 import net.swofty.catchngo.api.ApiModels
 import net.swofty.catchngo.models.AuthViewModel
+import net.swofty.catchngo.models.ImageViewModel
 import net.swofty.catchngo.models.QuestionsViewModel
+import java.io.ByteArrayOutputStream
 
 class RegisterScreenClass {
 
-    /* ------ Colours ------ */
+    /* -------------------------------------------------------------------- */
+    /*  Colours & fonts                                                     */
+    /* -------------------------------------------------------------------- */
     private val darkBackground = Color(0xFF15202B)
     private val darkSurface    = Color(0xFF1E2732)
     private val accentBlue     = Color(0xFF1DA1F2)
     private val textWhite      = Color(0xFFE7E9EA)
     private val textSecondary  = Color(0xFF8899A6)
 
-    /* =========================================================
-       Composable entry-point
-       ========================================================= */
+    private val poppinsFamily = FontFamily(
+        Font(R.font.poppins_regular,  FontWeight.Normal),
+        Font(R.font.poppins_medium,   FontWeight.Medium),
+        Font(R.font.poppins_semibold, FontWeight.SemiBold),
+        Font(R.font.poppins_bold,     FontWeight.Bold)
+    )
+
+    /* -------------------------------------------------------------------- */
+    /*  Composable entry-point                                              */
+    /* -------------------------------------------------------------------- */
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     fun RegisterScreen(
-        onRegisterSuccess: () -> Unit,
-        onNavigateToLogin: () -> Unit,
-        authViewModel: AuthViewModel,
-        questionsViewModel: QuestionsViewModel
+        onRegisterSuccess : () -> Unit,
+        onNavigateToLogin : () -> Unit,
+        authViewModel     : AuthViewModel,
+        questionsViewModel: QuestionsViewModel,
+        imageViewModel    : ImageViewModel
     ) {
+        /* ------------ VM state ---------------- */
+        val registerState  by authViewModel.registerState.observeAsState()
+        val loginState  by authViewModel.loginState.observeAsState()
+        val questionsState by questionsViewModel.state.observeAsState(QuestionsViewModel.State.Loading)
+        val uploadState    by imageViewModel.uploadState.observeAsState(ImageViewModel.UploadState.Initial)
 
-        /* ------------ State from ViewModels ------------ */
-        val registerState   by authViewModel.registerState.observeAsState()
-        val questionsState  by questionsViewModel.state.observeAsState(QuestionsViewModel.State.Loading)
-
-        /* ------------ Local UI state ------------ */
+        /* ------------ Local form state -------- */
         var username        by remember { mutableStateOf("") }
         var password        by remember { mutableStateOf("") }
         var confirmPassword by remember { mutableStateOf("") }
         val questionAnswers = remember { mutableStateMapOf<Int, String>() }
 
-        /* ---------- Validation state ---------- */
+        /* ------------ Internal flow flags ----- */
+        var loginTriggered  by remember { mutableStateOf(false) }
+        var uploadTriggered by remember { mutableStateOf(false) }
+
+        /* ------------ Picture state ----------- */
+        var picBitmap by remember { mutableStateOf<Bitmap?>(null) }
+        var picBase64 by remember { mutableStateOf<String?>(null) }
+
+        /* ------------ Validation flags -------- */
         var attemptedSubmit        by remember { mutableStateOf(false) }
         var usernameError          by remember { mutableStateOf(false) }
         var passwordError          by remember { mutableStateOf(false) }
         var confirmPasswordError   by remember { mutableStateOf(false) }
         var questionsError         by remember { mutableStateOf(false) }
+        var pictureError           by remember { mutableStateOf(false) }
         var errorBannerMessage     by remember { mutableStateOf<String?>(null) }
 
-        /* ---------- One-shot actions ---------- */
+        /* ------------ One-shot helpers -------- */
         LaunchedEffect(Unit) { questionsViewModel.refresh() }
+
+        /* 1️⃣ register done → trigger login */
         LaunchedEffect(registerState) {
-            if (registerState is AuthViewModel.RegisterState.Success) onRegisterSuccess()
+            if (registerState is AuthViewModel.RegisterState.Success && !loginTriggered) {
+                loginTriggered = true              // guard
+                authViewModel.login(username, password)
+            }
         }
 
-        /* =========================================================
-           Layout
-           ========================================================= */
+        /* 2️⃣ login done → upload picture */
+        LaunchedEffect(loginState) {
+            if (loginState is AuthViewModel.LoginState.Success &&
+                picBase64 != null &&
+                !uploadTriggered) {
+                uploadTriggered = true             // guard
+                imageViewModel.uploadPicture(picBase64!!)
+            }
+        }
+
+        /* 3️⃣ upload done → final callback */
+        LaunchedEffect(uploadState) {
+            if (uploadState is ImageViewModel.UploadState.Success) {
+                onRegisterSuccess()
+            }
+        }
+
+        /* ------------ Image picker launcher --- */
+        val context = LocalContext.current
+        val pickImageLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.GetContent()
+        ) { uri: Uri? ->
+            uri ?: return@rememberLauncherForActivityResult
+            picBitmap = loadBitmap(context, uri)
+            picBase64 = picBitmap?.toBase64()
+        }
+
+        /* ---------------------------------------------------------------- */
+        /*  Layout                                                          */
+        /* ---------------------------------------------------------------- */
         Box(
-            modifier = Modifier
+            Modifier
                 .fillMaxSize()
                 .background(darkBackground)
         ) {
             LazyColumn(
-                modifier = Modifier
+                Modifier
                     .fillMaxSize()
                     .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -95,21 +168,33 @@ class RegisterScreenClass {
                 /* ---------- Title ---------- */
                 item {
                     Text(
-                        text = "Catch N Go",
-                        style = MaterialTheme.typography.headlineLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = textWhite,
-                            fontSize = 32.sp
-                        ),
-                        textAlign = TextAlign.Center
+                        "Catch N Go",
+                        fontFamily = poppinsFamily,
+                        fontWeight = FontWeight.Bold,
+                        color      = textWhite,
+                        fontSize   = 32.sp,
+                        textAlign  = TextAlign.Center
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
                         "Create your account",
-                        style = MaterialTheme.typography.bodyLarge.copy(color = textSecondary),
-                        textAlign = TextAlign.Center
+                        fontFamily = poppinsFamily,
+                        fontWeight = FontWeight.Medium,
+                        color      = textSecondary,
+                        fontSize   = 16.sp,
+                        textAlign  = TextAlign.Center
                     )
                     Spacer(Modifier.height(32.dp))
+                }
+
+                /* ---------- Profile picture (square) ---------- */
+                item {
+                    ProfilePicturePicker(
+                        bitmap        = picBitmap,
+                        onPickClicked = { pickImageLauncher.launch("image/*") },
+                        error         = pictureError
+                    )
+                    Spacer(Modifier.height(24.dp))
                 }
 
                 /* ---------- Username ---------- */
@@ -134,7 +219,7 @@ class RegisterScreenClass {
                     )
                 }
 
-                /* ---------- Confirm Password ---------- */
+                /* ---------- Confirm password ---------- */
                 item { Spacer(Modifier.height(16.dp)) }
                 item {
                     FieldPassword(
@@ -146,15 +231,15 @@ class RegisterScreenClass {
                     )
                 }
 
-                /* ---------- Personality Questions ---------- */
+                /* ---------- Personality questions ---------- */
                 item {
                     Spacer(Modifier.height(24.dp))
                     Text(
                         "Personality Questions",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            color = textWhite,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        fontFamily = poppinsFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        color      = textWhite,
+                        fontSize   = 18.sp
                     )
                     Spacer(Modifier.height(8.dp))
                 }
@@ -162,19 +247,19 @@ class RegisterScreenClass {
                 when (val qs = questionsState) {
                     is QuestionsViewModel.State.Success -> {
                         items(qs.questions) { q ->
-                            val qError = attemptedSubmit && questionAnswers[q.id].isNullOrBlank()
+                            val qErr = attemptedSubmit && questionAnswers[q.id].isNullOrBlank()
                             QuestionItem(
-                                question    = q,
-                                answer      = questionAnswers[q.id] ?: "",
+                                question       = q,
+                                answer         = questionAnswers[q.id] ?: "",
                                 onAnswerChange = { ans -> questionAnswers[q.id] = ans },
-                                showError   = qError
+                                showError      = qErr
                             )
                             Spacer(Modifier.height(16.dp))
                         }
                     }
                     is QuestionsViewModel.State.Loading -> item {
                         Box(
-                            modifier = Modifier
+                            Modifier
                                 .fillMaxWidth()
                                 .padding(32.dp),
                             contentAlignment = Alignment.Center
@@ -182,67 +267,69 @@ class RegisterScreenClass {
                     }
                     is QuestionsViewModel.State.Error -> item {
                         Text(
-                            text   = "Error loading questions: ${qs.message}",
-                            color  = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(16.dp)
+                            "Error loading questions: ${qs.message}",
+                            fontFamily = poppinsFamily,
+                            fontWeight = FontWeight.Medium,
+                            color      = MaterialTheme.colorScheme.error,
+                            modifier   = Modifier.padding(16.dp)
                         )
-                        Box(
-                            Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.Center
-                        ) {
+                        Box(Modifier.fillMaxWidth(), Alignment.Center) {
                             Button(
                                 onClick = questionsViewModel::refresh,
                                 colors  = ButtonDefaults.buttonColors(containerColor = accentBlue),
                                 shape   = RoundedCornerShape(50.dp)
-                            ) { Text("Retry") }
+                            ) { Text("Retry", fontFamily = poppinsFamily) }
                         }
                     }
                     else -> {}
                 }
 
-                /* ---------- Error banner & Sign-up button ---------- */
+                /* ---------- Error banner / Sign-up button ---------- */
                 item {
-                    if (errorBannerMessage != null) {
+                    errorBannerMessage?.let {
                         Text(
-                            errorBannerMessage!!,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(vertical = 8.dp)
+                            it,
+                            fontFamily = poppinsFamily,
+                            fontWeight = FontWeight.Medium,
+                            color      = MaterialTheme.colorScheme.error,
+                            modifier   = Modifier.padding(vertical = 8.dp)
                         )
                     }
 
                     Spacer(Modifier.height(8.dp))
 
+                    val busy = registerState is AuthViewModel.RegisterState.Success ||
+                            loginState    is AuthViewModel.LoginState.Success ||
+                            uploadState   is ImageViewModel.UploadState.Loading
+
                     Button(
                         onClick = {
                             attemptedSubmit = true
-
-                            val errors = validateInputs(
-                                username,
-                                password,
-                                confirmPassword,
-                                questionAnswers
+                            val errors = validate(
+                                username, password, confirmPassword,
+                                questionAnswers, picBase64
                             )
 
                             usernameError        = errors.usernameMissing
                             passwordError        = errors.passwordMissing
                             confirmPasswordError = errors.confirmPasswordMissing || errors.passwordsMismatch
                             questionsError       = errors.questionsIncomplete
+                            pictureError         = errors.pictureMissing
 
                             errorBannerMessage = when {
-                                errors.usernameMissing || errors.passwordMissing ||
-                                        errors.confirmPasswordMissing || errors.questionsIncomplete ->
-                                    "Please fill in all required fields"
-                                errors.passwordsMismatch -> "Passwords do not match"
+                                errors.pictureMissing      -> "Please choose a profile picture"
+                                errors.usernameMissing ||
+                                        errors.passwordMissing ||
+                                        errors.confirmPasswordMissing ||
+                                        errors.questionsIncomplete   -> "Please fill in all required fields"
+                                errors.passwordsMismatch   -> "Passwords do not match"
                                 else -> null
                             }
 
-                            val isValid = !(errors.usernameMissing ||
-                                    errors.passwordMissing ||
-                                    errors.confirmPasswordMissing ||
-                                    errors.passwordsMismatch ||
-                                    errors.questionsIncomplete)
+                            if (errors.clean()) {
+                                loginTriggered   =  false
+                                uploadTriggered  =  false
 
-                            if (isValid) {
                                 authViewModel.register(
                                     username,
                                     password,
@@ -252,12 +339,12 @@ class RegisterScreenClass {
                                 )
                             }
                         },
-                        enabled = registerState !is AuthViewModel.RegisterState.Loading,
+                        enabled = !busy,
                         shape   = RoundedCornerShape(50.dp),
                         colors  = ButtonDefaults.buttonColors(
-                            containerColor        = accentBlue,
-                            contentColor          = Color.White,
-                            disabledContainerColor= accentBlue.copy(alpha = 0.5f)
+                            containerColor         = accentBlue,
+                            contentColor           = Color.White,
+                            disabledContainerColor = accentBlue.copy(alpha = 0.5f)
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -279,18 +366,26 @@ class RegisterScreenClass {
                                 RoundedCornerShape(50.dp)
                             )
                     ) {
-                        if (registerState is AuthViewModel.RegisterState.Loading)
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                color    = Color.White
+                        if (busy) {
+                            CircularProgressIndicator(Modifier.size(24.dp), Color.White)
+                        } else {
+                            Text(
+                                "Sign up",
+                                fontFamily = poppinsFamily,
+                                fontSize   = 16.sp,
+                                fontWeight = FontWeight.Bold
                             )
-                        else
-                            Text("Sign up", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
 
                     Spacer(Modifier.height(16.dp))
-                    TextButton(onClick = onNavigateToLogin) {
-                        Text("Already have an account? Sign in", color = accentBlue)
+                    TextButton(onNavigateToLogin) {
+                        Text(
+                            "Already have an account? Sign in",
+                            fontFamily = poppinsFamily,
+                            fontWeight = FontWeight.Medium,
+                            color      = accentBlue
+                        )
                     }
                     Spacer(Modifier.height(32.dp))
                 }
@@ -298,38 +393,88 @@ class RegisterScreenClass {
         }
     }
 
-    /* =========================================================
-       Field composables
-       ========================================================= */
+    /* -------------------------------------------------------------------- */
+    /*  Profile-picture picker (square)                                     */
+    /* -------------------------------------------------------------------- */
+    @Composable
+    private fun ProfilePicturePicker(
+        bitmap       : Bitmap?,
+        onPickClicked: () -> Unit,
+        error        : Boolean
+    ) {
+        val borderMod = if (error) Modifier.border(2.dp, Color.Red, RoundedCornerShape(12.dp))
+        else Modifier
+
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                Modifier
+                    .size(120.dp)                       // square
+                    .clip(RoundedCornerShape(12.dp))
+                    .shadow(4.dp, RoundedCornerShape(12.dp))
+                    .then(borderMod)
+                    .background(darkSurface),
+                contentAlignment = Alignment.Center
+            ) {
+                if (bitmap != null) {
+                    Image(bitmap.asImageBitmap(), null, Modifier.fillMaxSize())
+                } else {
+                    IconButton(onPickClicked) {
+                        Icon(
+                            Icons.Default.AddCircle,
+                            contentDescription = "Pick photo",
+                            tint   = accentBlue,
+                            modifier = Modifier.size(48.dp)
+                        )
+                    }
+                }
+            }
+
+            if (bitmap == null) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Add profile picture",
+                    fontFamily = poppinsFamily,
+                    fontWeight = FontWeight.Medium,
+                    color      = textSecondary,
+                    fontSize   = 14.sp
+                )
+            }
+        }
+    }
+
+    /* -------------------------------------------------------------------- */
+    /*  Username & Password fields                                          */
+    /* -------------------------------------------------------------------- */
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun FieldUsername(
-        value: String,
-        onChange: (String) -> Unit,
-        attemptedSubmit: Boolean,
-        showError: Boolean
+        value           : String,
+        onChange        : (String) -> Unit,
+        attemptedSubmit : Boolean,
+        showError       : Boolean
     ) {
-        val interactionSource = remember { MutableInteractionSource() }
-        val isFocused         by interactionSource.collectIsFocusedAsState()
+        val src  = remember { MutableInteractionSource() }
+        val focus by src.collectIsFocusedAsState()
 
         Box(
-            modifier = Modifier
+            Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
-                .borderForField(isFocused, showError)
+                .borderForField(focus, showError)
         ) {
             TextField(
                 value = value,
                 onValueChange = onChange,
-                placeholder    = { Text("Username", color = textSecondary) },
-                leadingIcon    = {
+                interactionSource = src,
+                placeholder = {
+                    Text("Username", fontFamily = poppinsFamily, color = textSecondary)
+                },
+                leadingIcon = {
                     Icon(
-                        imageVector        = Icons.Default.Person,
-                        contentDescription = "Username",
-                        tint               = if (isFocused) accentBlue else textSecondary
+                        Icons.Default.Person, null,
+                        tint = if (focus) accentBlue else textSecondary
                     )
                 },
-                interactionSource = interactionSource,
                 colors = TextFieldDefaults.textFieldColors(
                     containerColor         = darkSurface,
                     cursorColor            = accentBlue,
@@ -338,7 +483,8 @@ class RegisterScreenClass {
                     focusedIndicatorColor  = Color.Transparent,
                     unfocusedIndicatorColor= Color.Transparent
                 ),
-                modifier = Modifier.fillMaxWidth()
+                textStyle = LocalTextStyle.current.copy(fontFamily = poppinsFamily),
+                modifier  = Modifier.fillMaxWidth()
             )
         }
     }
@@ -346,35 +492,36 @@ class RegisterScreenClass {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun FieldPassword(
-        value: String,
-        onChange: (String) -> Unit,
-        attemptedSubmit: Boolean,
-        showError: Boolean,
-        label: String
+        value           : String,
+        onChange        : (String) -> Unit,
+        attemptedSubmit : Boolean,
+        showError       : Boolean,
+        label           : String
     ) {
-        val interactionSource = remember { MutableInteractionSource() }
-        val isFocused         by interactionSource.collectIsFocusedAsState()
+        val src  = remember { MutableInteractionSource() }
+        val focus by src.collectIsFocusedAsState()
 
         Box(
-            modifier = Modifier
+            Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
-                .borderForField(isFocused, showError)
+                .borderForField(focus, showError)
         ) {
             TextField(
                 value = value,
                 onValueChange = onChange,
-                placeholder    = { Text(label, color = textSecondary) },
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions      = KeyboardOptions(keyboardType = KeyboardType.Password),
+                interactionSource = src,
+                placeholder = {
+                    Text(label, fontFamily = poppinsFamily, color = textSecondary)
+                },
                 leadingIcon = {
                     Icon(
-                        imageVector        = Icons.Default.Lock,
-                        contentDescription = label,
-                        tint               = if (isFocused) accentBlue else textSecondary
+                        Icons.Default.Lock, null,
+                        tint = if (focus) accentBlue else textSecondary
                     )
                 },
-                interactionSource = interactionSource,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 colors = TextFieldDefaults.textFieldColors(
                     containerColor         = darkSurface,
                     cursorColor            = accentBlue,
@@ -383,47 +530,54 @@ class RegisterScreenClass {
                     focusedIndicatorColor  = Color.Transparent,
                     unfocusedIndicatorColor= Color.Transparent
                 ),
-                modifier = Modifier.fillMaxWidth()
+                textStyle = LocalTextStyle.current.copy(fontFamily = poppinsFamily),
+                modifier  = Modifier.fillMaxWidth()
             )
         }
     }
 
-    /* =========================================================
-       Question item
-       ========================================================= */
+    /* -------------------------------------------------------------------- */
+    /*  Question item                                                       */
+    /* -------------------------------------------------------------------- */
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun QuestionItem(
-        question: ApiModels.Question,
-        answer: String,
-        onAnswerChange: (String) -> Unit,
-        showError: Boolean
+        question       : ApiModels.Question,
+        answer         : String,
+        onAnswerChange : (String) -> Unit,
+        showError      : Boolean
     ) {
-        val interactionSource = remember { MutableInteractionSource() }
-        val isFocused         by interactionSource.collectIsFocusedAsState()
+        val src  = remember { MutableInteractionSource() }
+        val focus by src.collectIsFocusedAsState()
 
-        Column(Modifier.fillMaxWidth()) {
-            Text(question.questionText, style = MaterialTheme.typography.bodyMedium.copy(color = textWhite))
+        Column {
+            Text(
+                question.questionText,
+                fontFamily = poppinsFamily,
+                fontWeight = FontWeight.Medium,
+                color      = textWhite,
+                fontSize   = 14.sp
+            )
             Spacer(Modifier.height(4.dp))
-
             Box(
-                modifier = Modifier
+                Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .borderForField(isFocused, showError)
+                    .borderForField(focus, showError)
             ) {
                 TextField(
                     value = answer,
                     onValueChange = onAnswerChange,
-                    placeholder = { Text("Your answer", color = textSecondary) },
-                    leadingIcon  = {
+                    interactionSource = src,
+                    placeholder = {
+                        Text("Your answer", fontFamily = poppinsFamily, color = textSecondary)
+                    },
+                    leadingIcon = {
                         Icon(
-                            imageVector        = Icons.Default.AddCircle,
-                            contentDescription = "Answer",
-                            tint               = if (isFocused) accentBlue else textSecondary
+                            Icons.Default.AddCircle, null,
+                            tint = if (focus) accentBlue else textSecondary
                         )
                     },
-                    interactionSource = interactionSource,
                     colors = TextFieldDefaults.textFieldColors(
                         containerColor         = darkSurface,
                         cursorColor            = accentBlue,
@@ -432,68 +586,84 @@ class RegisterScreenClass {
                         focusedIndicatorColor  = Color.Transparent,
                         unfocusedIndicatorColor= Color.Transparent
                     ),
-                    modifier = Modifier.fillMaxWidth()
+                    textStyle = LocalTextStyle.current.copy(fontFamily = poppinsFamily),
+                    modifier  = Modifier.fillMaxWidth()
                 )
             }
         }
     }
 
-    /* =========================================================
-       Validation helpers
-       ========================================================= */
+    /* -------------------------------------------------------------------- */
+    /*  Validation helpers                                                  */
+    /* -------------------------------------------------------------------- */
     private data class ValidationErrors(
-        val usernameMissing: Boolean,
-        val passwordMissing: Boolean,
+        val usernameMissing       : Boolean,
+        val passwordMissing       : Boolean,
         val confirmPasswordMissing: Boolean,
-        val passwordsMismatch: Boolean,
-        val questionsIncomplete: Boolean
-    )
-
-    private fun validateInputs(
-        username: String,
-        password: String,
-        confirmPassword: String,
-        questionAnswers: Map<Int, String>
-    ): ValidationErrors {
-        val usernameMissing       = username.isBlank()
-        val passwordMissing       = password.isBlank()
-        val confirmPasswordMissing= confirmPassword.isBlank()
-        val passwordsMismatch     = password != confirmPassword
-        val questionsIncomplete   = questionAnswers.any { it.value.isBlank() }
-
-        return ValidationErrors(
-            usernameMissing,
-            passwordMissing,
-            confirmPasswordMissing,
-            passwordsMismatch,
-            questionsIncomplete
-        )
+        val passwordsMismatch     : Boolean,
+        val questionsIncomplete   : Boolean,
+        val pictureMissing        : Boolean
+    ) {
+        fun clean() = !(usernameMissing || passwordMissing || confirmPasswordMissing ||
+                passwordsMismatch || questionsIncomplete || pictureMissing)
     }
 
-    private fun Modifier.borderForField(isFocused: Boolean, hasError: Boolean): Modifier {
-        return when {
-            hasError -> this.border(
-                2.dp,
-                Color.Red,
-                RoundedCornerShape(12.dp)
-            )
-            isFocused -> this.border(
-                2.dp,
-                Brush.sweepGradient(
-                    listOf(
-                        accentBlue.copy(alpha = 0.2f),
-                        accentBlue.copy(alpha = 0.5f),
-                        accentBlue.copy(alpha = 0.8f),
-                        accentBlue,
-                        accentBlue.copy(alpha = 0.8f),
-                        accentBlue.copy(alpha = 0.5f),
-                        accentBlue.copy(alpha = 0.2f)
-                    ),
-                    center = Offset.Zero
+    private fun validate(
+        username       : String,
+        password       : String,
+        confirmPassword: String,
+        qAns           : Map<Int, String>,
+        pictureB64     : String?
+    ): ValidationErrors =
+        ValidationErrors(
+            usernameMissing        = username.isBlank(),
+            passwordMissing        = password.isBlank(),
+            confirmPasswordMissing = confirmPassword.isBlank(),
+            passwordsMismatch      = password != confirmPassword,
+            questionsIncomplete    = qAns.any { it.value.isBlank() },
+            pictureMissing         = pictureB64 == null
+        )
+
+    /* -------------------------------------------------------------------- */
+    /*  Styling helpers                                                     */
+    /* -------------------------------------------------------------------- */
+    private fun Modifier.borderForField(focus: Boolean, error: Boolean) = when {
+        error -> border(2.dp, Color.Red, RoundedCornerShape(12.dp))
+        focus -> border(
+            2.dp,
+            Brush.sweepGradient(
+                listOf(
+                    accentBlue.copy(alpha = 0.2f),
+                    accentBlue.copy(alpha = 0.5f),
+                    accentBlue.copy(alpha = 0.8f),
+                    accentBlue,
+                    accentBlue.copy(alpha = 0.8f),
+                    accentBlue.copy(alpha = 0.5f),
+                    accentBlue.copy(alpha = 0.2f)
                 ),
-                RoundedCornerShape(12.dp)
-            )
-            else -> this
-        }
+                center = Offset.Zero
+            ),
+            RoundedCornerShape(12.dp)
+        )
+        else -> this
+    }
+
+    /* -------------------------------------------------------------------- */
+    /*  Bitmap / Base-64 helpers                                            */
+    /* -------------------------------------------------------------------- */
+    private fun loadBitmap(ctx: android.content.Context, uri: Uri): Bitmap? =
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 28) {
+                ImageDecoder.decodeBitmap(ImageDecoder.createSource(ctx.contentResolver, uri))
+            } else {
+                @Suppress("DEPRECATION")
+                android.provider.MediaStore.Images.Media.getBitmap(ctx.contentResolver, uri)
+            }
+        }.getOrNull()
+
+    private fun Bitmap.toBase64(): String {
+        val bos = ByteArrayOutputStream()
+        compress(Bitmap.CompressFormat.PNG, 100, bos)
+        return Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
     }
 }

@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
                 val authViewModel:      AuthViewModel      = viewModel()
                 val gameViewModel:      GameViewModel      = viewModel()
                 val questionsViewModel: QuestionsViewModel = viewModel()
+                val imageViewModel:     ImageViewModel     = viewModel()
 
                 Scaffold(Modifier.fillMaxSize()) { inner ->
                     AppNavHost(
@@ -52,6 +53,7 @@ class MainActivity : ComponentActivity() {
                         gameViewModel        = gameViewModel,
                         questionsViewModel   = questionsViewModel,
                         startLocationService = ::startLocationTrackingService,
+                        imageViewModel       = imageViewModel,
                         modifier             = Modifier.padding(inner)
                     )
                 }
@@ -98,6 +100,7 @@ fun AppNavHost(
     authViewModel: AuthViewModel,
     gameViewModel: GameViewModel,
     questionsViewModel: QuestionsViewModel,
+    imageViewModel: ImageViewModel,
     startLocationService: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -140,7 +143,8 @@ fun AppNavHost(
                 },
                 onNavigateToLogin  = { navController.popBackStack() },
                 authViewModel      = authViewModel,
-                questionsViewModel = questionsViewModel
+                questionsViewModel = questionsViewModel,
+                imageViewModel     = imageViewModel
             )
         }
 
@@ -153,6 +157,18 @@ fun AppNavHost(
                     }
                 },
                 gameViewModel = gameViewModel
+            )
+        }
+
+        composable("leaderboard") {
+            LeaderboardScreen().LeaderboardContent(
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+
+        composable("friendex") {
+            FriendexScreen().FriendexContent(
+                onBackClick = { navController.popBackStack() }
             )
         }
     }

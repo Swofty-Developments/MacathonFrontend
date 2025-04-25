@@ -2,10 +2,7 @@ package net.swofty.catchngo.models
 
 import android.app.Application
 import android.location.Location
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
@@ -24,7 +21,7 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
     // Store current user ID for nearby user searches
     private var userId: String? = null
 
-    // Default radius in meters for nearby search
+    // Default radius (metres) sent to the backend
     private val defaultRadius = 100.0
 
     /* -------------------------------------------------------------------- */
@@ -51,8 +48,8 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
     init {
         // Set up location collection and automatic uploads
         viewModelScope.launch {
-            location.collectLatest { location ->
-                location?.let { uploadLocation(it) }
+            location.collectLatest { loc ->
+                loc?.let { uploadLocation(it) }
             }
         }
     }
@@ -61,68 +58,51 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
     /*  Public API                                                          */
     /* -------------------------------------------------------------------- */
 
-    /**
-     * Set the current user ID and start watching for nearby users.
-     */
+    /**  Set the current user ID and begin polling for nearby players.  */
     fun setUserId(id: String) {
+        if (id == userId) return   // already set
         userId = id
         startNearbyUsersWatch()
     }
 
-    /**
-     * Start periodic fetching of nearby users.
-     */
+    /**  Start periodic fetching of nearby users.  */
     fun startNearbyUsersWatch(radiusMeters: Double = defaultRadius) {
         // Cancel any existing job
         nearbyUsersJob?.cancel()
 
-        // Start a new job to fetch nearby users periodically
         nearbyUsersJob = viewModelScope.launch(Dispatchers.IO) {
             while (true) {
                 fetchNearbyUsers(radiusMeters)
-                kotlinx.coroutines.delay(30000) // 30 seconds between updates
+                kotlinx.coroutines.delay(500) // every 0.5s
             }
         }
     }
 
-    /**
-     * Stop watching for nearby users.
-     */
+    /**  Stop polling for nearby users.  */
     fun stopNearbyUsersWatch() {
         nearbyUsersJob?.cancel()
         nearbyUsersJob = null
     }
 
-    /**
-     * Manually trigger a fetch of nearby users.
-     */
+    /**  Manually trigger a fetch right now.  */
     fun refreshNearbyUsers(radiusMeters: Double = defaultRadius) {
-        viewModelScope.launch(Dispatchers.IO) {
-            fetchNearbyUsers(radiusMeters)
-        }
+        viewModelScope.launch(Dispatchers.IO) { fetchNearbyUsers(radiusMeters) }
     }
 
     /* -------------------------------------------------------------------- */
     /*  Private helpers                                                     */
     /* -------------------------------------------------------------------- */
 
-    /**
-     * Upload the location to the server.
-     */
-    private suspend fun uploadLocation(location: Location): Boolean {
-        return try {
-            locationApi.uploadLocation(location)
-        } catch (e: Exception) {
-            false
-        }
+    /**  Upload the device’s current location to the server.  */
+    private suspend fun uploadLocation(location: Location): Boolean = try {
+        locationApi.uploadLocation(location)
+    } catch (e: Exception) {
+        false
     }
 
-    /**
-     * Fetch nearby users within the specified radius.
-     */
+    /**  Fetch nearby users within the specified radius.  */
     private suspend fun fetchNearbyUsers(radiusMeters: Double) {
         val id = userId ?: return
-
         _nearbyUsers.postValue(NearbyUsersState.Loading)
 
         try {

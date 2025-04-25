@@ -28,6 +28,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -36,6 +38,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.google.android.gms.location.*
+import net.swofty.catchngo.R
 
 @Suppress("PrivatePropertyName")
 class LocationPermissionScreen {
@@ -46,6 +49,14 @@ class LocationPermissionScreen {
     private val accentBlue     = Color(0xFF1DA1F2)
     private val textWhite      = Color(0xFFE7E9EA)
     private val textSecondary  = Color(0xFF8899A6)
+
+    // ────────── poppins font family ────────
+    private val poppinsFamily = FontFamily(
+        Font(R.font.poppins_regular, FontWeight.Normal),
+        Font(R.font.poppins_medium, FontWeight.Medium),
+        Font(R.font.poppins_semibold, FontWeight.SemiBold),
+        Font(R.font.poppins_bold, FontWeight.Bold)
+    )
 
     // ────────── settings shortcut ──────
     private fun launchAppSettings(context: Context) {
@@ -101,7 +112,7 @@ class LocationPermissionScreen {
         ) { granted ->
             hasBgPerm = granted
             // On Android 11+, a direct request almost always yields false.
-            // Push user straight to Settings so they can choose “Always allow”.
+            // Push user straight to Settings so they can choose "Always allow".
             if (!granted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 launchAppSettings(context)
             }
@@ -178,24 +189,31 @@ class LocationPermissionScreen {
                 Spacer(Modifier.height(24.dp))
 
                 Text("Catch N Go",
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        fontWeight = FontWeight.Bold,
-                        color      = textWhite,
-                        fontSize   = 32.sp
-                    ))
+                    fontFamily = poppinsFamily,
+                    fontWeight = FontWeight.Bold,
+                    color = textWhite,
+                    fontSize = 32.sp,
+                    textAlign = TextAlign.Center
+                )
 
                 Spacer(Modifier.height(16.dp))
 
                 Text("Location Tracking Required",
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontWeight = FontWeight.SemiBold, color = textWhite),
-                    textAlign = TextAlign.Center)
+                    fontFamily = poppinsFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    color = textWhite,
+                    fontSize = 20.sp,
+                    textAlign = TextAlign.Center
+                )
 
                 Spacer(Modifier.height(16.dp))
 
                 Text(
-                    "We need 24/7 access (“Always allow”) so we can award points for who you sit next to.",
-                    style     = MaterialTheme.typography.bodyLarge.copy(color = textSecondary),
+                    "We need 24/7 access (\"Always allow\") so we can award points for who you sit next to.",
+                    fontFamily = poppinsFamily,
+                    fontWeight = FontWeight.Normal,
+                    color = textSecondary,
+                    fontSize = 16.sp,
                     textAlign = TextAlign.Center
                 )
 
@@ -224,13 +242,24 @@ class LocationPermissionScreen {
                                 ),
                                 RoundedCornerShape(50)
                             )
-                    ) { Text("Continue", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+                    ) {
+                        Text(
+                            "Continue",
+                            fontFamily = poppinsFamily,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
 
                 } else {
                     CircularProgressIndicator(color = accentBlue, modifier = Modifier.size(48.dp))
                     Spacer(Modifier.height(16.dp))
-                    Text("Waiting for location permissions…",
-                        style = MaterialTheme.typography.bodyMedium.copy(color = textSecondary),
+                    Text(
+                        "Waiting for location permissions…",
+                        fontFamily = poppinsFamily,
+                        fontWeight = FontWeight.Medium,
+                        color = textSecondary,
+                        fontSize = 14.sp,
                         textAlign = TextAlign.Center
                     )
                 }
@@ -261,16 +290,31 @@ class LocationPermissionScreen {
                 .padding(16.dp)
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Your Current Location",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        color = textWhite, fontWeight = FontWeight.SemiBold))
+                Text(
+                    "Your Current Location",
+                    fontFamily = poppinsFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    color = textWhite,
+                    fontSize = 16.sp,
+                    textAlign = TextAlign.Center
+                )
 
                 Spacer(Modifier.height(8.dp))
-                Text("Latitude: $latitude",
-                    style = MaterialTheme.typography.bodyMedium.copy(color = textWhite))
+                Text(
+                    "Latitude: $latitude",
+                    fontFamily = poppinsFamily,
+                    fontWeight = FontWeight.Normal,
+                    color = textWhite,
+                    fontSize = 14.sp
+                )
                 Spacer(Modifier.height(4.dp))
-                Text("Longitude: $longitude",
-                    style = MaterialTheme.typography.bodyMedium.copy(color = textWhite))
+                Text(
+                    "Longitude: $longitude",
+                    fontFamily = poppinsFamily,
+                    fontWeight = FontWeight.Normal,
+                    color = textWhite,
+                    fontSize = 14.sp
+                )
             }
         }
     }

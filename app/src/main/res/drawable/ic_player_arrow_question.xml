@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- Circular base (red outline) -->
+    <path
+        android:pathData="M24,2
+                          a22,22 0 1,1 0,44
+                          a22,22 0 1,1 0,-44"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF3B30"
+        android:strokeWidth="1.5"/>
+
+    <!-- Black circle fill -->
+    <path
+        android:pathData="M24,4
+                          a20,20 0 1,1 0,40
+                          a20,20 0 1,1 0,-40"
+        android:fillColor="#ffffffff"/>
+
+    <!-- Arrow shaft (red) -->
+    <path
+        android:pathData="M24,29 L24,19.9"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF3B30"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"/>
+
+    <!-- Question-mark overlay (red) -->
+    <path
+        android:pathData="M24,22
+                          c3,0 6,-2 6,-5
+                          0,-3 -2.5,-5 -6,-5
+                          -3,0 -5,1.5 -5,4
+                          h3
+                          c0,-1 0.8,-2 2,-2
+                          1.4,0 2,0.8 2,2
+                          0,1.8 -2,2 -3,2
+                          v3
+                          h3
+                          v-1
+                          M24,32
+                          a2,2 0 1,0 0,4
+                          a2,2 0 1,0 0,-4"
+        android:fillColor="#FF3B30"/>
+</vector>

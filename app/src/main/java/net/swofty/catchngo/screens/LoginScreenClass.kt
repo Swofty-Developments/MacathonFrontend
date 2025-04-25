@@ -15,6 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -29,6 +31,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.animation.core.*
 import androidx.compose.ui.geometry.Offset
+import net.swofty.catchngo.R
 
 class LoginScreenClass {
     // Define custom colors
@@ -37,6 +40,14 @@ class LoginScreenClass {
     private val accentBlue = Color(0xFF1DA1F2) // Twitter/X blue
     private val textWhite = Color(0xFFE7E9EA) // Off-white text
     private val textSecondary = Color(0xFF8899A6) // Secondary text color
+
+    // Poppins Font Family
+    private val poppinsFamily = FontFamily(
+        Font(R.font.poppins_regular, FontWeight.Normal),
+        Font(R.font.poppins_medium, FontWeight.Medium),
+        Font(R.font.poppins_semibold, FontWeight.SemiBold),
+        Font(R.font.poppins_bold, FontWeight.Bold)
+    )
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
@@ -72,11 +83,10 @@ class LoginScreenClass {
                 // Logo or App Title
                 Text(
                     text = "Catch N Go",
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = textWhite,
-                        fontSize = 32.sp
-                    ),
+                    fontFamily = poppinsFamily,
+                    fontWeight = FontWeight.Bold,
+                    color = textWhite,
+                    fontSize = 32.sp,
                     textAlign = TextAlign.Center
                 )
 
@@ -84,9 +94,10 @@ class LoginScreenClass {
 
                 Text(
                     text = "Sign in to continue",
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        color = textSecondary
-                    ),
+                    fontFamily = poppinsFamily,
+                    fontWeight = FontWeight.Medium,
+                    color = textSecondary,
+                    fontSize = 16.sp,
                     textAlign = TextAlign.Center
                 )
 
@@ -138,7 +149,13 @@ class LoginScreenClass {
                     TextField(
                         value = username,
                         onValueChange = { username = it },
-                        placeholder = { Text("Username", color = textSecondary) },
+                        placeholder = {
+                            Text(
+                                "Username",
+                                fontFamily = poppinsFamily,
+                                color = textSecondary
+                            )
+                        },
                         colors = TextFieldDefaults.textFieldColors(
                             containerColor = darkSurface,
                             cursorColor = accentBlue,
@@ -155,6 +172,10 @@ class LoginScreenClass {
                             )
                         },
                         interactionSource = usernameInteractionSource,
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontFamily = poppinsFamily,
+                            fontWeight = FontWeight.Normal
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
                     )
@@ -196,7 +217,13 @@ class LoginScreenClass {
                     TextField(
                         value = password,
                         onValueChange = { password = it },
-                        placeholder = { Text("Password", color = textSecondary) },
+                        placeholder = {
+                            Text(
+                                "Password",
+                                fontFamily = poppinsFamily,
+                                color = textSecondary
+                            )
+                        },
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         colors = TextFieldDefaults.textFieldColors(
@@ -215,6 +242,10 @@ class LoginScreenClass {
                             )
                         },
                         interactionSource = passwordInteractionSource,
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontFamily = poppinsFamily,
+                            fontWeight = FontWeight.Normal
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
                     )
@@ -226,6 +257,8 @@ class LoginScreenClass {
                 if (loginState is AuthViewModel.LoginState.Error) {
                     Text(
                         text = (loginState as AuthViewModel.LoginState.Error).message,
+                        fontFamily = poppinsFamily,
+                        fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
@@ -273,6 +306,7 @@ class LoginScreenClass {
                     } else {
                         Text(
                             "Next",
+                            fontFamily = poppinsFamily,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -287,6 +321,8 @@ class LoginScreenClass {
                 ) {
                     Text(
                         "Don't have an account? Sign up",
+                        fontFamily = poppinsFamily,
+                        fontWeight = FontWeight.Medium,
                         color = accentBlue
                     )
                 }

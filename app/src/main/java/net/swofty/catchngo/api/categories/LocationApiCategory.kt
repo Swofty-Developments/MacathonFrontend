@@ -8,6 +8,7 @@ import net.swofty.catchngo.api.ApiManager
 import net.swofty.catchngo.api.ApiModels
 import net.swofty.catchngo.api.ApiResponse
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 
 /**
@@ -60,56 +61,57 @@ class LocationApiCategory(context: Context) {
     /**
      * Parses the JSON response into a list of NearbyUser objects.
      */
-    private fun parseNearbyUsers(json: String): List<ApiModels.NearbyUser> {
-        val result = mutableListOf<ApiModels.NearbyUser>()
-
+    private fun parseNearbyUsers(payload: String): List<ApiModels.NearbyUser> {
+        // First try the wrapped-object format
         try {
-            val jsonArray = JSONArray(json)
+            val root   = JSONObject(payload)
+            val status = root.optString("status", "success")
+            if (status != "success") error("Server responded with $status")
 
-            for (i in 0 until jsonArray.length()) {
-                val userJson = jsonArray.getJSONObject(i)
-
-                // Parse questions
-                val questionsArray = userJson.getJSONArray("questions")
-                val questions = mutableListOf<ApiModels.QuestionAnswer>()
-
-                for (j in 0 until questionsArray.length()) {
-                    val questionJson = questionsArray.getJSONObject(j)
-                    questions.add(
-                        ApiModels.QuestionAnswer(
-                            id = questionJson.getInt("id"),
-                            answer = questionJson.getString("answer")
-                        )
-                    )
-                }
-
-                // Parse friends
-                val friendsArray = userJson.getJSONArray("friends")
-                val friends = mutableListOf<String>()
-
-                for (j in 0 until friendsArray.length()) {
-                    friends.add(friendsArray.getString(j))
-                }
-
-                // Create the NearbyUser object
-                result.add(
-                    ApiModels.NearbyUser(
-                        id = userJson.getString("id"),
-                        name = userJson.getString("name"),
-                        points = userJson.getInt("points"),
-                        disabled = userJson.getBoolean("disabled"),
-                        questions = questions,
-                        friends = friends,
-                        selectedFriend = userJson.optString("selected_friend", "").takeIf { it.isNotEmpty() },
-                        latitude = userJson.getDouble("latitude"),
-                        longitude = userJson.getDouble("longitude")
-                    )
-                )
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
+            val dataArray = root.getJSONArray("data")
+            return decodeArray(dataArray)
+        } catch (_: JSONException) {
+            // Not an object wrapper – fall through to raw-array handling
         }
 
-        return result
+        // Second chance: bare JSON array
+        try {
+            val dataArray = JSONArray(payload)
+            return decodeArray(dataArray)
+        } catch (ex: JSONException) {
+            throw IllegalStateException(
+                "Unsupported /location/nearby JSON format: ${ex.localizedMessage}",
+                ex
+            )
+        }
     }
+
+    private fun decodeArray(array: JSONArray): List<ApiModels.NearbyUser> =
+        List(array.length()) { idx ->
+            val obj = array.getJSONObject(idx)
+
+            val questions = List(obj.getJSONArray("questions").length()) { qIdx ->
+                val q = obj.getJSONArray("questions").getJSONObject(qIdx)
+                ApiModels.QuestionAnswer(
+                    id     = q.getInt("id"),
+                    answer = q.getString("answer")
+                )
+            }
+
+            val friends = List(obj.getJSONArray("friends").length()) { fIdx ->
+                obj.getJSONArray("friends").getString(fIdx)
+            }
+
+            ApiModels.NearbyUser(
+                id            = obj.optString("id", null),
+                name          = obj.getString("name"),
+                points        = obj.getInt("points"),
+                disabled      = obj.getBoolean("disabled"),
+                questions     = questions,
+                friends       = friends,
+                selectedFriend= obj.optString("selected_friend", null),
+                latitude      = obj.getDouble("latitude"),
+                longitude     = obj.getDouble("longitude")
+            )
+        }
 }

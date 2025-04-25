@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- Circular base (yellow outline) -->
+    <path
+        android:pathData="M24,2
+                          a22,22 0 1,1 0,44
+                          a22,22 0 1,1 0,-44"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFC107"
+        android:strokeWidth="1.5"/>
+
+    <!-- Solid circle fill (white) -->
+    <path
+        android:pathData="M24,4
+                          a20,20 0 1,1 0,40
+                          a20,20 0 1,1 0,-40"
+        android:fillColor="#FFFFFFFF"/>
+
+    <!-- Ellipsis ─ three small dots -->
+    <!-- Left dot -->
+    <path
+        android:pathData="M18,22
+                          a2,2 0 1,1 0,4
+                          a2,2 0 1,1 0,-4"
+        android:fillColor="#FFC107"/>
+
+    <!-- Middle dot -->
+    <path
+        android:pathData="M24,22
+                          a2,2 0 1,1 0,4
+                          a2,2 0 1,1 0,-4"
+        android:fillColor="#FFC107"/>
+
+    <!-- Right dot -->
+    <path
+        android:pathData="M30,22
+                          a2,2 0 1,1 0,4
+                          a2,2 0 1,1 0,-4"
+        android:fillColor="#FFC107"/>
+</vector>

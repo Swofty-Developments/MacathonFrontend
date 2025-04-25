@@ -5,6 +5,7 @@ package net.swofty.catchngo.api.categories
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.delay
 import net.swofty.catchngo.api.ApiManager
 import net.swofty.catchngo.api.ApiModels
 import net.swofty.catchngo.api.ApiResponse
@@ -37,7 +38,11 @@ class AuthApiCategory(context: Context) {
     /*  POST /auth/login  → bearer token                                    */
     /* -------------------------------------------------------------------- */
 
-    suspend fun login(username: String, password: String): ApiModels.TokenResponse {
+    suspend fun login(
+        username: String,
+        password: String
+    ): ApiModels.TokenResponse {
+
         val res = api.postMultipart(
             "/auth/login",
             mapOf(
@@ -47,9 +52,9 @@ class AuthApiCategory(context: Context) {
             )
         )
 
-        Log.i("Test", res.toString())
+        Log.i("AuthApi", "Login response → $res")
 
-        return when (res) {
+        val result = when (res) {
             is ApiResponse.Success -> {
                 val data   = unwrap(JSONObject(res.data))
                 val token  = data.getString("access_token")
@@ -60,6 +65,9 @@ class AuthApiCategory(context: Context) {
             is ApiResponse.Error     -> error("HTTP ${res.code}: ${res.message}")
             is ApiResponse.Exception -> throw res.exception
         }
+
+        delay(500)                       // ← 500 ms delay before returning
+        return result
     }
 
     /* -------------------------------------------------------------------- */
@@ -88,17 +96,16 @@ class AuthApiCategory(context: Context) {
         Log.i("AuthApi", "Register payload → $payload")
 
         val res = api.post(url, payload)
-        return when (res) {
+        Log.i("AuthApi", "Register response → $res")
+
+        val result = when (res) {
             is ApiResponse.Success -> {
-                val data  = unwrap(JSONObject(res.data.ifBlank { "{}" }))
-                val token = data.optString("access_token", null)
-                val type  = data.optString("token_type",  null)
-                token?.let { api.saveAccessToken(it) }
-                ApiModels.RegisterResponse(ok = true, accessToken = token, tokenType = type)
+                ApiModels.RegisterResponse(ok = true)
             }
             is ApiResponse.Error     -> ApiModels.RegisterResponse(false, reason = res.message)
             is ApiResponse.Exception -> throw res.exception
         }
+        return result
     }
 
     /* -------------------------------------------------------------------- */

@@ -4,6 +4,7 @@
 package net.swofty.catchngo.models
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +36,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 _profile.value = authApi.me()
+                Log.i("Test", authApi.me().toString())
             } catch (e: Exception) {
                 _profile.value = JSONObject().put("error", e.message ?: "Unknown error")
             }
@@ -44,4 +46,5 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     /* Handy getters --------------------------------------------------------- */
     fun getUsername(): String = _profile.value?.optString("name") ?: ""
     fun getPoints()  : Int    = _profile.value?.optInt("points") ?: 0
+    fun getUserId()  : String = _profile.value?.optString("_id") ?: ""
 }

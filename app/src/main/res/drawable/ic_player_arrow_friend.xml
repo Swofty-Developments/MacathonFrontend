@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- Circular base (green outline) -->
+    <path
+        android:pathData="M24,2
+                          a22,22 0 1,1 0,44
+                          a22,22 0 1,1 0,-44"
+        android:fillColor="#00000000"
+        android:strokeColor="#00C853"
+        android:strokeWidth="1.5"/>
+
+    <!-- Solid circle fill (white) -->
+    <path
+        android:pathData="M24,4
+                          a20,20 0 1,1 0,40
+                          a20,20 0 1,1 0,-40"
+        android:fillColor="#FFFFFFFF"/>
+
+    <!-- Friend icon – head (radius 6, centred) -->
+    <path
+        android:pathData="M24,12
+                          a6,6 0 1,1 0,12
+                          a6,6 0 1,1 0,-12"
+        android:fillColor="#00C853"/>
+
+    <!-- Friend icon – shoulders -->
+    <path
+        android:pathData="M14,34
+                          c0,-8 8,-12 10,-12
+                          s10,4 10,12
+                          z"
+        android:fillColor="#00C853"/>
+</vector>
