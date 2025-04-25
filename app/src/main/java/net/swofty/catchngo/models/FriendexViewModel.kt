@@ -92,7 +92,7 @@ class FriendexViewModel(application: Application) : AndroidViewModel(application
                 } catch (e: Exception) {
                     // Just continue polling on error
                 }
-                delay(2000) // Poll every 2 seconds
+                delay(1000) // Poll every 2 seconds
             }
         }
     }
@@ -185,8 +185,6 @@ class FriendexViewModel(application: Application) : AndroidViewModel(application
                 val success = friendexApi.selectUser(userId)
                 if (success) {
                     _selectUserState.postValue(SelectUserState.Success)
-                    // After successfully selecting a user, start polling status
-                    startSelectionStatusPolling()
                 } else {
                     _selectUserState.postValue(SelectUserState.Error("Failed to select user"))
                 }
@@ -206,8 +204,6 @@ class FriendexViewModel(application: Application) : AndroidViewModel(application
                 val success = friendexApi.deselectUser()
                 if (success) {
                     _deselectUserState.postValue(DeselectUserState.Success)
-                    // After deselecting, stop polling and clear the flow
-                    stopSelectionStatusPolling()
                     _selectionStatusFlow.value = null
                 } else {
                     _deselectUserState.postValue(DeselectUserState.Error("Failed to deselect user"))

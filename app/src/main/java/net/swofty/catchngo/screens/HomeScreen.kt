@@ -158,9 +158,12 @@ class HomeScreen {
             }
         }
 
-        /* ── Start selection status polling when tracking someone ────────── */
         LaunchedEffect(Unit) {
             friendexViewModel.checkSelectionStatus()
+        }
+
+        /* ── Start selection status polling when tracking someone ────────── */
+        LaunchedEffect(Unit) {
             friendexViewModel.startSelectionStatusPolling()
         }
 
