@@ -25,7 +25,7 @@ class ApiManager private constructor(context: Context) {
         appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     companion object {
-        private const val BASE_URL = "http://10.0.2.2:8000"
+        private const val BASE_URL = "https://macathon.fadednetworks.com"
         private const val PREFS_NAME = "CatchNGoPrefs"
         private const val TOKEN_KEY = "accessToken"
         private const val AUTH_HDR   = "Authorization"
