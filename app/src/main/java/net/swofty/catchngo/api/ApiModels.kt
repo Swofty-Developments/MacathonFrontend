@@ -103,4 +103,20 @@ object ApiModels {
     )
 
 
+    /**
+     * Multiple-choice option model for MCQ questions.
+     */
+    data class McqOption(
+        val id: Int,
+        val answerText: String
+    )
+
+    /**
+     * Multiple-choice question model with options.
+     */
+    data class McqQuestion(
+        val id: Int,
+        val questionText: String,
+        val options: List<McqOption>
+    )
 }

@@ -69,6 +69,7 @@ import com.mapbox.maps.extension.style.sources.getSourceAs
 import com.mapbox.maps.plugin.gestures.OnMapClickListener
 import com.mapbox.maps.plugin.gestures.addOnMapClickListener
 import com.mapbox.maps.plugin.gestures.removeOnMapClickListener
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.swofty.catchngo.R
 import net.swofty.catchngo.api.ApiModels
@@ -113,7 +114,8 @@ class HomeScreen {
         leaderboardViewModel: LeaderboardViewModel = viewModel(),
         friendexViewModel: FriendexViewModel = viewModel(),
         locationViewModel: LocationViewModel = viewModel(),
-        authViewModel: AuthViewModel = viewModel()
+        authViewModel: AuthViewModel = viewModel(),
+        questionsViewModel: QuestionsViewModel = viewModel()
     ) {
         val ctx = LocalContext.current
         val coroutineScope = rememberCoroutineScope()
@@ -187,13 +189,24 @@ class HomeScreen {
         }
 
         /* ── Get currently tracked user info ─────────────────────────────── */
-        val trackedUser = remember(selectionStatus, nearbyState) {
-            val status = selectionStatus ?: return@remember null
-            val selectedId = status.selectedFriend ?: return@remember null
-            val nearby = (nearbyState as? LocationViewModel.NearbyUsersState.Success)?.users
-                ?: return@remember null
+        val trackedUserLive by remember {
+            derivedStateOf<ApiModels.NearbyUser?> {
+                val id = selectionStatus?.selectedFriend ?: return@derivedStateOf null
+                val users =
+                    (nearbyState as? LocationViewModel.NearbyUsersState.Success)?.users ?: return@derivedStateOf null
+                users.firstOrNull { it.id == id }
+            }
+        }
+        var quizUser by remember { mutableStateOf<ApiModels.NearbyUser?>(null) }
+        var showQuestions by remember { mutableStateOf(false) }
+        if (quizUser != null)
+            Log.i("pog", "quizUser → $quizUser and showQuestions → $showQuestions")
 
-            nearby.firstOrNull { it.id == selectedId }
+        LaunchedEffect(selectionStatus?.questionsReady) {
+            if (selectionStatus?.questionsReady == true && trackedUserLive != null) {
+                quizUser      = trackedUserLive
+                showQuestions = true
+            }
         }
 
         /* ── UI shell ────────────────────────────────────────────────────── */
@@ -538,10 +551,10 @@ class HomeScreen {
             /* ── bottom panel ───────────────────────────────────────────── */
             BottomPanel(
                 points = points ?: 0,
-                friendCount = friendCount.value,
+                friendCount = friendIds.size,
                 leaderboardPosition = leaderboardPosition,
                 selectionStatus = selectionStatus,
-                trackedUser = trackedUser,
+                trackedUser = trackedUserLive,
                 onStopTrackingClick = {
                     coroutineScope.launch {
                         friendexViewModel.deselectUser()
@@ -579,6 +592,32 @@ class HomeScreen {
                     onBackClick = { showFriendex = false },
                     gameViewModel = gameViewModel,
                     friendexViewModel = friendexViewModel
+                )
+            }
+
+            AnimatedVisibility(
+                visible = showQuestions && quizUser != null,
+                enter   = slideInVertically { it } + fadeIn(),
+                exit    = slideOutVertically { it } + fadeOut(),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                QuestionsScreen().QuestionsContent(
+                    trackedUser = quizUser!!,
+                    onFinished = { allCorrect ->
+                        showQuestions = false
+
+                        /*  wait for the 300 ms exit animation to finish
+                            before clearing the snapshot so nothing reads
+                            quizUser == null mid-animation                */
+                        coroutineScope.launch {
+                            delay(1000)
+                            quizUser = null
+                            friendexViewModel.deselectUser()
+                            friendexViewModel.resetStates()
+                        }
+
+                        friendexViewModel.getUserFriends(gameViewModel.getUserId())
+                    }
                 )
             }
 
@@ -732,6 +771,10 @@ class HomeScreen {
         trackedUser: ApiModels.NearbyUser,
         onStopClick: () -> Unit
     ) {
+        if (selectionStatus.questionsReady) {
+
+        }
+
         Column(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally

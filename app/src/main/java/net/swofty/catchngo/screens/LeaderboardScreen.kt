@@ -78,6 +78,10 @@ class LeaderboardScreen {
         gameViewModel: GameViewModel = viewModel(),
         leaderboardViewModel: LeaderboardViewModel = viewModel()
     ) {
+        LaunchedEffect(Unit) {
+            gameViewModel.refreshProfile()
+        }
+
         // State
         val userId = remember { derivedStateOf { gameViewModel.getUserId() } }
         val username = remember { derivedStateOf { gameViewModel.getUsername() } }

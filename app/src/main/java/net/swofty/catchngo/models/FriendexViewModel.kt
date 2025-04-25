@@ -1,6 +1,7 @@
 package net.swofty.catchngo.models
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -88,6 +89,7 @@ class FriendexViewModel(application: Application) : AndroidViewModel(application
             while (isActive && selectionPollingActive) {
                 try {
                     val status = friendexApi.checkSelection()
+                    Log.i("FriendexViewModel", "Polling selection status → $status")
                     _selectionStatusFlow.value = status
                 } catch (e: Exception) {
                     // Just continue polling on error

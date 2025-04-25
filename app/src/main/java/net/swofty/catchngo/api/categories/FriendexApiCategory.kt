@@ -196,14 +196,14 @@ class FriendexApiCategory(context: Context) {
     }
 
     /**
-     * POST /friendex/addfriend
+     * POST /friendex/add-friend
      * Add a user as a friend.
      *
      * @param friendId The ID of the user to add as a friend
      * @return True if adding friend was successful
      */
     suspend fun addFriend(friendId: String): Boolean = withContext(Dispatchers.IO) {
-        val response = api.post("/friendex/addfriend?friend_id=$friendId")
+        val response = api.post("/friendex/add-friend?friend_id=$friendId")
 
         return@withContext response is ApiResponse.Success
     }
