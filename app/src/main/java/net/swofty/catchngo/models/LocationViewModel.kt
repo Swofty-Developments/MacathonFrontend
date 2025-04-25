@@ -2,6 +2,7 @@ package net.swofty.catchngo.models
 
 import android.app.Application
 import android.location.Location
+import android.util.Log
 import androidx.lifecycle.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -60,9 +61,8 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
 
     /**  Set the current user ID and begin polling for nearby players.  */
     fun setUserId(id: String) {
-        if (id == userId) return   // already set
+        if (id == userId) return
         userId = id
-        startNearbyUsersWatch()
     }
 
     /**  Start periodic fetching of nearby users.  */
@@ -107,6 +107,7 @@ class LocationViewModel(application: Application) : AndroidViewModel(application
 
         try {
             val users = locationApi.fetchNearbyUsers(id, radiusMeters)
+            Log.i("LocationViewModel", "Fetched ${users.size} nearby users ${users}")
             _nearbyUsers.postValue(NearbyUsersState.Success(users))
         } catch (e: Exception) {
             _nearbyUsers.postValue(NearbyUsersState.Error(e.message ?: "Unknown error"))

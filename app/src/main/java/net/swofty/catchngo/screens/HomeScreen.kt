@@ -71,7 +71,10 @@ import com.mapbox.maps.plugin.gestures.addOnMapClickListener
 import com.mapbox.maps.plugin.gestures.removeOnMapClickListener
 import kotlinx.coroutines.launch
 import net.swofty.catchngo.R
+import net.swofty.catchngo.api.ApiModels
 import net.swofty.catchngo.models.*
+import kotlin.math.min
+import kotlin.math.round
 
 class HomeScreen {
 
@@ -85,6 +88,7 @@ class HomeScreen {
     private val accentBlue = Color(0xFF1DA1F2)
     private val accentRed = Color(0xFFE0245E)
     private val accentPurple = Color(0xFF9C27B0)
+    private val accentGreen = Color(0xFF4CAF50)
     private val textWhite = Color(0xFFE7E9EA)
     private val textSecondary = Color(0xFF8899A6)
 
@@ -121,6 +125,9 @@ class HomeScreen {
         val points by remember { derivedStateOf { gameViewModel.getPoints() } }
         val userId by remember { derivedStateOf { gameViewModel.getUserId() } }
 
+        // Selection status from FriendexViewModel
+        val selectionStatus by friendexViewModel.selectionStatusFlow.collectAsState()
+
         // Leaderboard + friendex …
         val userRankState by leaderboardViewModel.userRank.collectAsState()
         var showLeaderboard by remember { mutableStateOf(false) }
@@ -129,7 +136,7 @@ class HomeScreen {
         val friendCount = remember { mutableStateOf(0) }
         var showDeleteDialog by remember { mutableStateOf(false) }
 
-        /* ── “info bubble” state ─────────────────────────────────────────── */
+        /* ── "info bubble" state ─────────────────────────────────────────── */
         var selectedUserId by remember { mutableStateOf<String?>(null) }
 
         val leaderboardPosition by remember {
@@ -151,6 +158,14 @@ class HomeScreen {
             }
         }
 
+        /* ── Start selection status polling when tracking someone ────────── */
+        LaunchedEffect(Unit) {
+            locationViewModel.startNearbyUsersWatch()
+            gameViewModel.refreshProfile()
+            friendexViewModel.checkSelectionStatus()
+            friendexViewModel.startSelectionStatusPolling()
+        }
+
         /* ── hook LocationViewModel once we know our ID ─────────────────── */
         LaunchedEffect(userId) { if (userId.isNotEmpty()) locationViewModel.setUserId(userId) }
 
@@ -164,6 +179,16 @@ class HomeScreen {
                 pitch(pitch3D)
                 bearing(heading.toDouble())
             }
+        }
+
+        /* ── Get currently tracked user info ─────────────────────────────── */
+        val trackedUser = remember(selectionStatus, nearbyState) {
+            val status = selectionStatus ?: return@remember null
+            val selectedId = status.selectedFriend ?: return@remember null
+            val nearby = (nearbyState as? LocationViewModel.NearbyUsersState.Success)?.users
+                ?: return@remember null
+
+            nearby.firstOrNull { it.id == selectedId }
         }
 
         /* ── UI shell ────────────────────────────────────────────────────── */
@@ -201,6 +226,14 @@ class HomeScreen {
                             style.addImage(
                                 "friend_arrow",
                                 vectorToBitmap(ctx, R.drawable.ic_player_arrow_friend),
+                                false
+                            )
+                        }
+                        // Tracking arrow
+                        if (style.getStyleImage("tracking_arrow") == null) {
+                            style.addImage(
+                                "tracking_arrow",
+                                vectorToBitmap(ctx, R.drawable.ic_player_arrow_tracking),
                                 false
                             )
                         }
@@ -266,9 +299,11 @@ class HomeScreen {
                 }
 
                 /* ── update nearby arrows (friends vs strangers) ──── */
-                MapEffect(loc, nearbyState, friendIds) { mapView ->
+                MapEffect(loc, nearbyState, friendIds, selectionStatus) { mapView ->
                     val myLoc = loc ?: return@MapEffect
                     val st = nearbyState
+                    val trackedUserId = selectionStatus?.selectedFriend
+
                     mapView.getMapboxMap().getStyle { style ->
                         val feats = mutableListOf<Feature>()
 
@@ -285,7 +320,14 @@ class HomeScreen {
                                             it
                                         ); it[1].toDouble()
                                     }
-                                    val icon = if (friendIds.contains(u.id)) "friend_arrow" else "nearby_arrow"
+
+                                    // Determine icon based on relationship
+                                    val icon = when {
+                                        trackedUserId == u.id -> "tracking_arrow"
+                                        friendIds.contains(u.id) -> "friend_arrow"
+                                        else -> "nearby_arrow"
+                                    }
+
                                     Feature.fromGeometry(Point.fromLngLat(u.longitude, u.latitude)).apply {
                                         addNumberProperty("bearing", bearing)
                                         addStringProperty("icon", icon)
@@ -344,11 +386,10 @@ class HomeScreen {
                 /* Pre-compute friend / name status --------------------- */
                 val isFriend = selectedUserId?.let { friendIds.contains(it) } == true
                 val nearbyName = remember(selectedUserId, nearbyState) {
-                    if (isFriend) {
-                        (nearbyState as? LocationViewModel.NearbyUsersState.Success)
-                            ?.users?.firstOrNull { it.id == selectedUserId }?.name
-                    } else null
+                    (nearbyState as? LocationViewModel.NearbyUsersState.Success)
+                        ?.users?.firstOrNull { it.id == selectedUserId }?.name
                 }
+                val isCurrentlyTracked = selectionStatus?.selectedFriend == selectedUserId
 
                 Surface(
                     tonalElevation = 4.dp,
@@ -365,8 +406,7 @@ class HomeScreen {
                     ) {
                         /* Headline ------------------------------------ */
                         Text(
-                            text = if (isFriend) nearbyName ?: "Friend"
-                            else "Not In Friendex!",
+                            text = nearbyName ?: (if (isFriend) "Friend" else "Not In Friendex!"),
                             fontFamily = poppinsFamily,
                             fontWeight = FontWeight.SemiBold,
                             color = Color.Black,
@@ -387,7 +427,13 @@ class HomeScreen {
                         Button(
                             onClick = {
                                 selectedUserId?.let { id ->
-                                    if (isFriend) {
+                                    if (isCurrentlyTracked) {
+                                        // Already tracking this user, deselect them
+                                        coroutineScope.launch {
+                                            friendexViewModel.deselectUser()
+                                            friendexViewModel.resetStates()
+                                        }
+                                    } else if (isFriend) {
                                         showFriendex = true     // just open Friendex
                                     } else {
                                         coroutineScope.launch {
@@ -399,13 +445,21 @@ class HomeScreen {
                                 selectedUserId = null          // close bubble
                             },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isFriend) accentPurple else accentBlue,
+                                containerColor = when {
+                                    isCurrentlyTracked -> accentRed
+                                    isFriend -> accentPurple
+                                    else -> accentBlue
+                                },
                                 contentColor = Color.White
                             ),
                             shape = RoundedCornerShape(50)
                         ) {
                             Text(
-                                if (isFriend) "Go to Friendex" else "Start Tracking",
+                                when {
+                                    isCurrentlyTracked -> "Stop Tracking"
+                                    isFriend -> "Go to Friendex"
+                                    else -> "Start Tracking"
+                                },
                                 fontFamily = poppinsFamily,
                                 fontWeight = FontWeight.Bold
                             )
@@ -458,6 +512,18 @@ class HomeScreen {
                         }
                     }
 
+                    // Only show stop tracking button if actively tracking someone
+                    if (selectionStatus?.selectedFriend != null) {
+                        CircleIconButton(
+                            Icons.Default.Close, "Stop", color = accentRed
+                        ) {
+                            coroutineScope.launch {
+                                friendexViewModel.deselectUser()
+                                friendexViewModel.resetStates()
+                            }
+                        }
+                    }
+
                     CircleIconButton(
                         Icons.Default.Delete, "Delete", color = accentRed
                     ) { showDeleteDialog = true }
@@ -469,10 +535,19 @@ class HomeScreen {
                 points = points ?: 0,
                 friendCount = friendCount.value,
                 leaderboardPosition = leaderboardPosition,
+                selectionStatus = selectionStatus,
+                trackedUser = trackedUser,
+                onStopTrackingClick = {
+                    coroutineScope.launch {
+                        friendexViewModel.deselectUser()
+                        friendexViewModel.resetStates()
+                    }
+                },
                 onFriendexClick = { showFriendex = true },
                 onLeaderboardClick = { showLeaderboard = true },
                 onDeleteAccountClick = { showDeleteDialog = true },
-                modifier = Modifier.align(Alignment.BottomCenter)
+                modifier = Modifier.align(Alignment.BottomCenter),
+                gameViewModel = gameViewModel
             )
 
             /* ── overlay screens ────────────────────────────────────────── */
@@ -556,19 +631,22 @@ class HomeScreen {
     }
 
     /* ─────────────────────────────────────────────────────────────────────── */
-    /*  Bottom panel  … (unchanged)                                           */
+    /*  Bottom panel (updated)                                                 */
     /* ─────────────────────────────────────────────────────────────────────── */
     @Composable
     private fun BottomPanel(
         points: Int,
         friendCount: Int,
         leaderboardPosition: Int,
+        selectionStatus: ApiModels.SelectionStatus?,
+        trackedUser: ApiModels.NearbyUser?,
+        onStopTrackingClick: () -> Unit,
+        gameViewModel: GameViewModel,
         onFriendexClick: () -> Unit,
         onLeaderboardClick: () -> Unit,
         onDeleteAccountClick: () -> Unit,
         modifier: Modifier = Modifier
     ) {
-        /* … existing implementation unchanged … */
         Box(
             modifier = modifier
                 .fillMaxWidth()
@@ -603,27 +681,37 @@ class HomeScreen {
                     )
                 }
 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(16.dp))
 
-                Text(
-                    "Tracking: Nobody :(",
-                    fontFamily = poppinsFamily,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 16.sp,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Center
-                )
+                if (selectionStatus?.selectedFriend != null && trackedUser != null) {
+                    // Display tracking information
+                    TrackingInfo(
+                        selectionStatus = selectionStatus,
+                        trackedUser = trackedUser,
+                        onStopClick = onStopTrackingClick
+                    )
+                } else {
+                    // No active tracking - show default content
+                    Text(
+                        "Tracking: Nobody :(",
+                        fontFamily = poppinsFamily,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 16.sp,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
 
-                Text(
-                    "Click on someones arrow to track them, and be within 5 metres of them for 20 out of any 30 minute block to get points!",
-                    color = textSecondary,
-                    fontFamily = poppinsFamily,
-                    fontSize = 14.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    textAlign = TextAlign.Center
-                )
+                    Text(
+                        "Click on someones arrow to track them, and be within 5 metres of them for 20 out of any 30 minute block to get points!",
+                        color = textSecondary,
+                        fontFamily = poppinsFamily,
+                        fontSize = 14.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        textAlign = TextAlign.Center
+                    )
+                }
 
                 Spacer(Modifier.weight(1f))
             }
@@ -631,7 +719,141 @@ class HomeScreen {
     }
 
     /* ─────────────────────────────────────────────────────────────────────── */
-    /*  Circular icon button (unchanged)                                     */
+    /*  Tracking info component (new)                                          */
+    /* ─────────────────────────────────────────────────────────────────────── */
+    @Composable
+    private fun TrackingInfo(
+        selectionStatus: ApiModels.SelectionStatus,
+        trackedUser: ApiModels.NearbyUser,
+        onStopClick: () -> Unit
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Tracked user information
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        text = "Tracking: ${trackedUser.name}",
+                        fontFamily = poppinsFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        color = accentBlue
+                    )
+
+                    Text(
+                        text = "Points accumulated: ${selectionStatus.pointsAccumulated}",
+                        fontFamily = poppinsFamily,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp,
+                        color = accentGreen
+                    )
+                }
+
+                Button(
+                    onClick = onStopClick,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = accentRed,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(50)
+                ) {
+                    Text(
+                        "Stop",
+                        fontFamily = poppinsFamily,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // Timer information
+            val timeRemaining = selectionStatus.timeRemaining.toInt()
+            val remainingMinutes = timeRemaining / 60
+            val remainingSeconds = timeRemaining % 60
+
+            Text(
+                text = "Time remaining: ${remainingMinutes}m ${remainingSeconds}s",
+                fontFamily = poppinsFamily,
+                fontWeight = FontWeight.Medium,
+                fontSize = 14.sp,
+                color = Color.Black
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            // Progress bar - shows percentage of 30 minute session completed
+            val progressPercent = (selectionStatus.elapsedTime / (selectionStatus.elapsedTime + selectionStatus.timeRemaining)).toFloat()
+            val progressPercentDisplay = (progressPercent * 100).toInt()
+
+            Column(Modifier.fillMaxWidth()) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "Progress",
+                        fontFamily = poppinsFamily,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 12.sp,
+                        color = textSecondary
+                    )
+                    Text(
+                        "$progressPercentDisplay%",
+                        fontFamily = poppinsFamily,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 12.sp,
+                        color = textSecondary
+                    )
+                }
+
+                Spacer(Modifier.height(4.dp))
+
+                // Custom progress bar with gradient
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(Color.LightGray.copy(alpha = 0.3f))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(progressPercent)
+                            .background(
+                                brush = Brush.horizontalGradient(
+                                    colors = listOf(accentBlue, accentPurple)
+                                ),
+                                shape = RoundedCornerShape(5.dp)
+                            )
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            // Information about the tracking process
+            Text(
+                text = if (selectionStatus.isInitiator)
+                    "You initiated tracking"
+                else
+                    "${trackedUser.name} initiated tracking",
+                fontFamily = poppinsFamily,
+                fontSize = 12.sp,
+                color = textSecondary
+            )
+        }
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────── */
+    /*  Circular icon button                                                  */
     /* ─────────────────────────────────────────────────────────────────────── */
     @Composable
     private fun CircleIconButton(
@@ -641,7 +863,6 @@ class HomeScreen {
         color: Color = accentBlue,
         onClick: () -> Unit
     ) {
-        /* … existing implementation unchanged … */
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box {
                 IconButton(
@@ -690,7 +911,7 @@ class HomeScreen {
     }
 
     /* ─────────────────────────────────────────────────────────────────────── */
-    /*  Heading sensor helper (unchanged)                                    */
+    /*  Heading sensor helper                                                 */
     /* ─────────────────────────────────────────────────────────────────────── */
     @Composable
     private fun rememberDeviceHeading(): State<Float> {

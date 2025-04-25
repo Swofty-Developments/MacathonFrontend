@@ -36,7 +36,6 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 _profile.value = authApi.me()
-                Log.i("Test", authApi.me().toString())
             } catch (e: Exception) {
                 _profile.value = JSONObject().put("error", e.message ?: "Unknown error")
             }

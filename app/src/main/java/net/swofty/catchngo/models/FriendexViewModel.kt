@@ -6,6 +6,10 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import net.swofty.catchngo.api.ApiModels
 import net.swofty.catchngo.api.categories.FriendexApiCategory
@@ -16,6 +20,15 @@ import net.swofty.catchngo.api.categories.FriendexApiCategory
 class FriendexViewModel(application: Application) : AndroidViewModel(application) {
 
     private val friendexApi = FriendexApiCategory(application.applicationContext)
+
+    /* -------------------------------------------------------------------- */
+    /*  StateFlow – Selection Status (for real-time tracking)                */
+    /* -------------------------------------------------------------------- */
+
+    private val _selectionStatusFlow = MutableStateFlow<ApiModels.SelectionStatus?>(null)
+    val selectionStatusFlow = _selectionStatusFlow.asStateFlow()
+
+    private var selectionPollingActive = false
 
     /* -------------------------------------------------------------------- */
     /*  LiveData – User Entry                                               */
@@ -46,6 +59,13 @@ class FriendexViewModel(application: Application) : AndroidViewModel(application
     val selectUserState: LiveData<SelectUserState> = _selectUserState
 
     /* -------------------------------------------------------------------- */
+    /*  LiveData – Deselect User                                            */
+    /* -------------------------------------------------------------------- */
+
+    private val _deselectUserState = MutableLiveData<DeselectUserState>(DeselectUserState.Initial)
+    val deselectUserState: LiveData<DeselectUserState> = _deselectUserState
+
+    /* -------------------------------------------------------------------- */
     /*  LiveData – Add Friend                                               */
     /* -------------------------------------------------------------------- */
 
@@ -55,6 +75,48 @@ class FriendexViewModel(application: Application) : AndroidViewModel(application
     /* -------------------------------------------------------------------- */
     /*  Public API                                                          */
     /* -------------------------------------------------------------------- */
+
+    /**
+     * Start polling the selection status at regular intervals.
+     * This enables real-time tracking updates.
+     */
+    fun startSelectionStatusPolling() {
+        if (selectionPollingActive) return
+
+        selectionPollingActive = true
+        viewModelScope.launch(Dispatchers.IO) {
+            while (isActive && selectionPollingActive) {
+                try {
+                    val status = friendexApi.checkSelection()
+                    _selectionStatusFlow.value = status
+                } catch (e: Exception) {
+                    // Just continue polling on error
+                }
+                delay(2000) // Poll every 2 seconds
+            }
+        }
+    }
+
+    /**
+     * Stop polling the selection status.
+     */
+    fun stopSelectionStatusPolling() {
+        selectionPollingActive = false
+    }
+
+    /**
+     * Check selection status once (without starting the continuous polling).
+     */
+    fun checkSelectionStatus() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val status = friendexApi.checkSelection()
+                _selectionStatusFlow.value = status
+            } catch (e: Exception) {
+                // Silently fail, the UI can handle null status
+            }
+        }
+    }
 
     /**
      * Fetch user entry information.
@@ -123,11 +185,35 @@ class FriendexViewModel(application: Application) : AndroidViewModel(application
                 val success = friendexApi.selectUser(userId)
                 if (success) {
                     _selectUserState.postValue(SelectUserState.Success)
+                    // After successfully selecting a user, start polling status
+                    startSelectionStatusPolling()
                 } else {
                     _selectUserState.postValue(SelectUserState.Error("Failed to select user"))
                 }
             } catch (e: Exception) {
                 _selectUserState.postValue(SelectUserState.Error(e.message ?: "Unknown error"))
+            }
+        }
+    }
+
+    /**
+     * Deselect the currently selected user.
+     */
+    fun deselectUser() {
+        _deselectUserState.value = DeselectUserState.Loading
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val success = friendexApi.deselectUser()
+                if (success) {
+                    _deselectUserState.postValue(DeselectUserState.Success)
+                    // After deselecting, stop polling and clear the flow
+                    stopSelectionStatusPolling()
+                    _selectionStatusFlow.value = null
+                } else {
+                    _deselectUserState.postValue(DeselectUserState.Error("Failed to deselect user"))
+                }
+            } catch (e: Exception) {
+                _deselectUserState.postValue(DeselectUserState.Error(e.message ?: "Unknown error"))
             }
         }
     }
@@ -158,7 +244,16 @@ class FriendexViewModel(application: Application) : AndroidViewModel(application
      */
     fun resetStates() {
         _selectUserState.value = SelectUserState.Initial
+        _deselectUserState.value = DeselectUserState.Initial
         _addFriendState.value = AddFriendState.Initial
+    }
+
+    /**
+     * Clean up resources when the ViewModel is cleared.
+     */
+    override fun onCleared() {
+        super.onCleared()
+        stopSelectionStatusPolling()
     }
 
     /* -------------------------------------------------------------------- */
@@ -191,6 +286,13 @@ class FriendexViewModel(application: Application) : AndroidViewModel(application
         object Loading : SelectUserState()
         object Success : SelectUserState()
         data class Error(val message: String) : SelectUserState()
+    }
+
+    sealed class DeselectUserState {
+        object Initial : DeselectUserState()
+        object Loading : DeselectUserState()
+        object Success : DeselectUserState()
+        data class Error(val message: String) : DeselectUserState()
     }
 
     sealed class AddFriendState {

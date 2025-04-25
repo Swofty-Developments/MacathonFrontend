@@ -116,9 +116,7 @@ class ApiManager private constructor(context: Context) {
             // auth header if token present
             getAccessToken()?.let { token ->
                 connection.setRequestProperty(AUTH_HDR, "Bearer $token")
-                Log.i("pog", "WE ARE PASSING THROUGH $token")
             }
-            Log.i("pog", "WE HAVE MADE A REQUETS BLAH BLAH")
 
             // write body if supplied
             if (bodyBytes != null) {
