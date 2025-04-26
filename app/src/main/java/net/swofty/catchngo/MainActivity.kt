@@ -177,5 +177,11 @@ fun AppNavHost(
                 onBackClick = { navController.popBackStack() }
             )
         }
+
+        composable("achievements") {
+            AchievementsScreenClass().AchievementsScreen(
+                onBackClick = { navController.popBackStack() }
+            )
+        }
     }
 }

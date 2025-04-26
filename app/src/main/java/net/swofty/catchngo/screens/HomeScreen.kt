@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBox
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Menu
@@ -115,7 +116,8 @@ class HomeScreen {
         friendexViewModel: FriendexViewModel = viewModel(),
         locationViewModel: LocationViewModel = viewModel(),
         authViewModel: AuthViewModel = viewModel(),
-        questionsViewModel: QuestionsViewModel = viewModel()
+        questionsViewModel: QuestionsViewModel = viewModel(),
+        achievementsViewModel: AchievementsViewModel = viewModel()
     ) {
         val ctx = LocalContext.current
         val coroutineScope = rememberCoroutineScope()
@@ -134,12 +136,19 @@ class HomeScreen {
         val userRankState by leaderboardViewModel.userRank.collectAsState()
         var showLeaderboard by remember { mutableStateOf(false) }
         var showFriendex by remember { mutableStateOf(false) }
+        var showAchievements by remember { mutableStateOf(false) }
+        val earnedAchievementsCount = remember { mutableStateOf(0) }
         val friendsState by friendexViewModel.friendsState.observeAsState()
         val friendCount = remember { mutableStateOf(0) }
         var showDeleteDialog by remember { mutableStateOf(false) }
 
         /* ── "info bubble" state ─────────────────────────────────────────── */
         var selectedUserId by remember { mutableStateOf<String?>(null) }
+
+        LaunchedEffect(Unit) {
+            achievementsViewModel.getUserAchievements()
+            achievementsViewModel.getMissingAchievements()
+        }
 
         val leaderboardPosition by remember {
             derivedStateOf {
@@ -206,6 +215,15 @@ class HomeScreen {
             if (selectionStatus?.questionsReady == true && trackedUserLive != null) {
                 quizUser      = trackedUserLive
                 showQuestions = true
+            }
+        }
+
+        // Observe the achievements state to update the badge count
+        val userAchievementsState by achievementsViewModel.userAchievementsState.observeAsState()
+        LaunchedEffect(userAchievementsState) {
+            if (userAchievementsState is AchievementsViewModel.UserAchievementsState.Success) {
+                val achievements = (userAchievementsState as AchievementsViewModel.UserAchievementsState.Success).achievements
+                earnedAchievementsCount.value = achievements.size
             }
         }
 
@@ -530,6 +548,16 @@ class HomeScreen {
                         }
                     }
 
+                    CircleIconButton(
+                        Icons.Default.AccountBox, "Achievements",  friendCount.value
+                    ) {
+                        showAchievements = true
+                        coroutineScope.launch {
+                            achievementsViewModel.getUserAchievements()
+                            achievementsViewModel.getMissingAchievements()
+                        }
+                    }
+
                     // Only show stop tracking button if actively tracking someone
                     if (selectionStatus?.selectedFriend != null) {
                         CircleIconButton(
@@ -592,6 +620,19 @@ class HomeScreen {
                     onBackClick = { showFriendex = false },
                     gameViewModel = gameViewModel,
                     friendexViewModel = friendexViewModel
+                )
+            }
+
+            AnimatedVisibility(
+                visible = showAchievements,
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut(),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                AchievementsScreenClass().AchievementsScreen(
+                    onBackClick = { showAchievements = false },
+                    gameViewModel = gameViewModel,
+                    achievementsViewModel = achievementsViewModel
                 )
             }
 

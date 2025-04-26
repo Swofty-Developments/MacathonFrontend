@@ -119,4 +119,23 @@ object ApiModels {
         val questionText: String,
         val options: List<McqOption>
     )
+
+    /**
+     * Represents an achievement that the user has earned
+     */
+    data class Achievement(
+        val title: String,
+        val description: String,
+        val points: Int
+    )
+
+    /**
+     * Represents an achievement that the user hasn't earned yet
+     */
+    data class MissingAchievement(
+        val title: String,
+        val description: String,
+        val points: Int,
+        val minFriends: Int
+    )
 }
